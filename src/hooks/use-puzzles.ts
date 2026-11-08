@@ -11,7 +11,8 @@ import { Chess, type Move, type Square } from "chess.js";
 import { playSound } from "@/lib/sounds";
 import { fenToPieces } from "@/lib/chess-utils";
 import { PUZZLES, type Puzzle } from "@/lib/puzzles";
-import { loadProfile, updateProfile, type LearningProfile } from "@/lib/game-store";
+import { emptyProfile, loadProfile, type LearningProfile } from "@/lib/game-store";
+import { awardPuzzle, awardDailyChallenge, dateKey } from "@/lib/career";
 
 export type PuzzleStatus = "solving" | "solved" | "failed" | "revealed";
 
@@ -40,9 +41,21 @@ function sanToMove(g: Chess, san: string): Move | null {
   );
 }
 
-export function usePuzzles() {
+function hashKey(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+/** The deterministic puzzle-of-the-day index. */
+export function dailyPuzzleIndex(): number {
+  return hashKey(`sovereign-${dateKey()}`) % PUZZLES.length;
+}
+
+export function usePuzzles(opts?: { daily?: boolean }) {
+  const daily = opts?.daily ?? false;
   // deterministic on the server; shuffled after mount to avoid hydration mismatch
-  const [idx, setIdx] = useState(0);
+  const [idx, setIdx] = useState(daily ? dailyPuzzleIndex() : 0);
   const puzzle = PUZZLES[idx];
 
   const chessRef = useRef<Chess>(new Chess(puzzle.fen));
@@ -55,7 +68,7 @@ export function usePuzzles() {
   const [status, setStatus] = useState<PuzzleStatus>("solving");
   const [wrongTick, setWrongTick] = useState(0);
   const [hintFrom, setHintFrom] = useState<Square | null>(null);
-  const [profile, setProfile] = useState<LearningProfile>(DEFAULT_PROFILE_PLACEHOLDER);
+  const [profile, setProfile] = useState<LearningProfile>(emptyProfile);
 
   // hydrate profile after mount
   useEffect(() => {
@@ -87,7 +100,7 @@ export function usePuzzles() {
   // shuffle the opening puzzle once after mount (avoids hydration mismatch)
   const shuffledRef = useRef(false);
   useEffect(() => {
-    if (shuffledRef.current) return;
+    if (shuffledRef.current || daily) return;
     shuffledRef.current = true;
     const t = window.setTimeout(() => {
       const next = Math.floor(Math.random() * PUZZLES.length);
@@ -97,7 +110,7 @@ export function usePuzzles() {
       }
     }, 0);
     return () => window.clearTimeout(t);
-  }, [idx, loadPuzzle]);
+  }, [idx, loadPuzzle, daily]);
 
   const clearHint = useCallback(() => setHintFrom(null), []);
 
@@ -109,31 +122,21 @@ export function usePuzzles() {
       solvedRef.current = true;
       setStatus("solved");
       playSound("win");
-      setProfile(
-        updateProfile((prev) => ({
-          ...prev,
-          xp: prev.xp + 5,
-          puzzleStreak: prev.puzzleStreak + 1,
-          bestStreak: Math.max(prev.bestStreak, prev.puzzleStreak + 1),
-          solvedPuzzles: prev.solvedPuzzles.includes(p.id)
-            ? prev.solvedPuzzles
-            : [...prev.solvedPuzzles, p.id],
-        }))
-      );
+      if (daily) {
+        awardDailyChallenge(p.id);
+      } else {
+        awardPuzzle(p.id, true);
+      }
+      setProfile(loadProfile());
     },
-    []
+    [daily]
   );
 
   const markFailed = useCallback(() => {
     setStatus("failed");
-    setProfile(
-      updateProfile((prev) => ({
-        ...prev,
-        puzzleStreak: 0,
-        puzzleAttempts: prev.puzzleAttempts + 1,
-      }))
-    );
-  }, []);
+    if (!daily) awardPuzzle(puzzle.id, false); // daily retries stay kind
+    setProfile(loadProfile());
+  }, [daily, puzzle.id]);
 
   /* ------------------------- auto reply ------------------------- */
 
@@ -261,7 +264,8 @@ export function usePuzzles() {
     if (status === "solved") return;
     if (replyTimer.current) window.clearTimeout(replyTimer.current);
     setStatus("revealed");
-    setProfile(updateProfile((prev) => ({ ...prev, puzzleStreak: 0 })));
+    if (!daily) awardPuzzle(puzzle.id, false); // reveal resets the streak too
+    setProfile(loadProfile());
     setHintFrom(null);
 
     // replay the full solution from the puzzle start
@@ -331,19 +335,5 @@ export function usePuzzles() {
     nextPuzzle,
     retryPuzzle,
     clearHint,
-  };
-}
-
-function DEFAULT_PROFILE_PLACEHOLDER() {
-  // server-safe placeholder; hydrated on mount
-  return {
-    xp: 0,
-    puzzleStreak: 0,
-    bestStreak: 0,
-    solvedPuzzles: [],
-    puzzleAttempts: 0,
-    drillWins: 0,
-    drillBest: null,
-    openingsDone: [],
   };
 }

@@ -5,10 +5,13 @@ import {
   Bot,
   ChartLine,
   Crown,
+  Flame,
   Info,
   ScrollText,
   ShieldCheck,
   Swords,
+  TrendingUp,
+  Trophy,
   Volume2,
   VolumeX,
 } from "lucide-react";
@@ -21,6 +24,8 @@ import {
 } from "@/components/ui/tooltip";
 import type { ChessGame } from "@/hooks/use-chess-game";
 import type { AppTab } from "@/components/chess/bottom-nav";
+import { useCareer } from "@/hooks/use-career";
+import { dateKey } from "@/lib/career";
 import { cn } from "@/lib/utils";
 
 /* ---------------- Aurora background ---------------- */
@@ -41,8 +46,9 @@ export function AuroraBackground() {
 
 const NAV_ITEMS: { id: AppTab; label: string; icon: React.ReactNode }[] = [
   { id: "play", label: "Play", icon: <Swords className="h-3.5 w-3.5" /> },
-  { id: "analyze", label: "Analyze", icon: <ChartLine className="h-3.5 w-3.5" /> },
   { id: "learn", label: "Learn", icon: <BookOpen className="h-3.5 w-3.5" /> },
+  { id: "analyze", label: "Analyze", icon: <ChartLine className="h-3.5 w-3.5" /> },
+  { id: "career", label: "Career", icon: <Trophy className="h-3.5 w-3.5" /> },
 ];
 
 export function Header({
@@ -58,6 +64,9 @@ export function Header({
   onNewGame: () => void;
   onRules: () => void;
 }) {
+  const career = useCareer();
+  const trainedToday = career.lastActiveDate === dateKey();
+
   return (
     <header className="relative z-10 border-b border-white/6 bg-black/25 backdrop-blur-md">
       <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-3 px-3 sm:px-6">
@@ -100,6 +109,78 @@ export function Header({
         </nav>
 
         <div className="flex items-center gap-2">
+          {/* -------- career chips -------- */}
+          <div className="hidden items-center gap-1.5 sm:flex">
+            <button
+              type="button"
+              onClick={() => onTab("career")}
+              className="flex items-center gap-1.5 rounded-full border border-gold/30 bg-gradient-to-b from-gold/15 to-transparent px-3 py-1.5 text-xs transition-colors hover:border-gold/60"
+              aria-label="Your rating — open career"
+            >
+              <TrendingUp className="h-3.5 w-3.5 text-gold-soft" />
+              <b className="font-mono text-gold-soft">{career.rating}</b>
+              <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-foreground/40">
+                elo
+              </span>
+            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div
+                  className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs"
+                  aria-label="Your crowns"
+                >
+                  <Crown className="h-3.5 w-3.5 text-gold-soft" />
+                  <b className="font-mono text-foreground/90">{career.crowns}</b>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>Crowns — earned everywhere, spent on hints</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors",
+                    trainedToday
+                      ? "border-orange-400/40 bg-orange-400/10"
+                      : "border-white/10 bg-white/5 opacity-80"
+                  )}
+                  aria-label="Your daily training streak"
+                >
+                  <Flame
+                    className={cn(
+                      "h-3.5 w-3.5",
+                      trainedToday ? "text-orange-300" : "text-foreground/40"
+                    )}
+                  />
+                  <b
+                    className={cn(
+                      "font-mono",
+                      trainedToday ? "text-orange-200" : "text-foreground/60"
+                    )}
+                  >
+                    {career.dailyStreak}
+                  </b>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                {trainedToday
+                  ? `Streak day ${career.dailyStreak} — trained today`
+                  : "Train today to keep the flame alive"}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+
+          {/* mobile flame only */}
+          <div
+            className="flex items-center gap-1 rounded-full border border-orange-400/30 bg-orange-400/10 px-2.5 py-1.5 text-xs sm:hidden"
+            aria-label="Daily streak"
+          >
+            <Flame className={cn("h-3.5 w-3.5", trainedToday ? "text-orange-300" : "text-foreground/40")} />
+            <b className={cn("font-mono", trainedToday ? "text-orange-200" : "text-foreground/60")}>
+              {career.dailyStreak}
+            </b>
+          </div>
+
           {game.mode === "ai" && tab === "play" && (
             <div
               className="hidden items-center gap-2.5 rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs sm:flex"
@@ -159,7 +240,7 @@ export function Header({
               <Button
                 onClick={onNewGame}
                 aria-label="New game"
-                className="h-9 border border-[#8a6a24]/50 bg-gradient-to-b from-[#ecca6f] to-[#c69c3f] px-2.5 text-[13px] font-semibold text-[#241a05] hover:from-[#f3d887] hover:to-[#d4a94e] sm:px-3.5"
+                className="hidden h-9 border border-[#8a6a24]/50 bg-gradient-to-b from-[#ecca6f] to-[#c69c3f] px-2.5 text-[13px] font-semibold text-[#241a05] hover:from-[#f3d887] hover:to-[#d4a94e] sm:inline-flex sm:px-3.5"
               >
                 <Info className="h-4 w-4 sm:mr-1" />
                 <span className="hidden sm:inline">New Game</span>

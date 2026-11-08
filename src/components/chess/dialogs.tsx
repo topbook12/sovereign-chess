@@ -247,11 +247,13 @@ export function GameOverDialog({
   onOpenChange,
   game,
   onAnalyze,
+  onOpenCareer,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   game: ChessGame;
   onAnalyze?: () => void;
+  onOpenCareer?: () => void;
 }) {
   const { result, mode, humanColor } = game;
   if (!result) return null;
@@ -305,7 +307,31 @@ export function GameOverDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {mode === "ai" && (
+        {mode === "ai" && game.lastReward && (
+          <div className="mx-auto grid w-full grid-cols-3 gap-2">
+            <div className="rounded-xl border border-gold/30 bg-gold/10 px-2 py-2 text-center">
+              <p className="font-mono text-lg font-black text-gold-soft">
+                {game.lastReward.ratingDelta >= 0 ? "+" : "−"}
+                {Math.abs(game.lastReward.ratingDelta)}
+              </p>
+              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-foreground/45">
+                Rating · {game.lastReward.newRating}
+              </p>
+            </div>
+            <div className="rounded-xl border border-emerald-400/25 bg-emerald-400/10 px-2 py-2 text-center">
+              <p className="font-mono text-lg font-black text-emerald-300">+{game.lastReward.xp}</p>
+              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-foreground/45">XP</p>
+            </div>
+            <div className="rounded-xl border border-white/12 bg-white/5 px-2 py-2 text-center">
+              <p className="flex items-center justify-center gap-1 font-mono text-lg font-black text-foreground/90">
+                <Crown className="h-4 w-4 text-gold-soft" />+{game.lastReward.crowns}
+              </p>
+              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-foreground/45">Crowns</p>
+            </div>
+          </div>
+        )}
+
+        {mode === "ai" && !game.lastReward && (
           <div className="mx-auto flex items-center gap-4 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-2.5 text-sm">
             <span className="text-emerald-300">
               W <b className="font-mono">{game.stats.wins}</b>
@@ -342,6 +368,19 @@ export function GameOverDialog({
             >
               <Sparkles className="mr-2 h-4 w-4" />
               Analyze with the Oracle
+            </Button>
+          )}
+          {onOpenCareer && (
+            <Button
+              onClick={() => {
+                onOpenChange(false);
+                onOpenCareer();
+              }}
+              variant="outline"
+              className="h-11 border-white/10 bg-white/5 text-foreground/85 hover:bg-white/10"
+            >
+              <Trophy className="mr-2 h-4 w-4 text-gold-soft" />
+              View Career &amp; Achievements
             </Button>
           )}
           <Button

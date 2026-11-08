@@ -5,15 +5,16 @@
  * Desktop uses the header tabs instead.
  */
 
-import { BookOpen, ChartLine, Swords } from "lucide-react";
+import { BookOpen, ChartLine, Swords, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type AppTab = "play" | "analyze" | "learn";
+export type AppTab = "play" | "analyze" | "learn" | "career";
 
 const TABS: { id: AppTab; label: string; icon: React.ReactNode }[] = [
   { id: "play", label: "Play", icon: <Swords className="h-[18px] w-[18px]" /> },
-  { id: "analyze", label: "Analyze", icon: <ChartLine className="h-[18px] w-[18px]" /> },
   { id: "learn", label: "Learn", icon: <BookOpen className="h-[18px] w-[18px]" /> },
+  { id: "analyze", label: "Analyze", icon: <ChartLine className="h-[18px] w-[18px]" /> },
+  { id: "career", label: "Career", icon: <Trophy className="h-[18px] w-[18px]" /> },
 ];
 
 export function BottomNav({
@@ -39,7 +40,7 @@ export function BottomNav({
               onClick={() => onTab(t.id)}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "relative flex min-h-[52px] min-w-[72px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-2 py-1.5 transition-colors",
+                "relative flex min-h-[52px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 transition-colors",
                 active
                   ? "text-[#241a05]"
                   : "text-foreground/55 hover:text-foreground/90"

@@ -9,7 +9,16 @@ import {
   type PieceSymbol,
 } from "chess.js";
 import { playSound, primeAudio, setSoundEnabled } from "@/lib/sounds";
+import { awardGame, spendCrowns, HINT_COST } from "@/lib/career";
 import { toast } from "sonner";
+
+export interface RewardSummary {
+  ratingDelta: number;
+  newRating: number;
+  xp: number;
+  crowns: number;
+  outcome: "win" | "draw" | "loss";
+}
 
 export type GameMode = "ai" | "human";
 export type Difficulty = "easy" | "medium" | "hard" | "master";
@@ -198,6 +207,7 @@ export function useChessGame() {
   const [engineRetryTick, setEngineRetryTick] = useState(0);
 
   const [stats, setStats] = useState<Stats>({ wins: 0, losses: 0, draws: 0 });
+  const [lastReward, setLastReward] = useState<RewardSummary | null>(null);
 
   // ---------- derived ----------
   const engineColor: Color = humanColor === "white" ? "b" : "w";
@@ -373,9 +383,28 @@ export function useChessGame() {
         else if (r.winner === humanColor) playSound("win");
         else playSound("lose");
       }
-      if (opts?.countStats !== false && mode === "ai") bumpStats(r);
+      if (opts?.countStats !== false && mode === "ai") {
+        bumpStats(r);
+        const outcome: "win" | "draw" | "loss" = !r.winner
+          ? "draw"
+          : r.winner === humanColor
+            ? "win"
+            : "loss";
+        const reasonText: Record<GameResult["reason"], string> = {
+          checkmate: "by checkmate",
+          resignation: "by resignation",
+          timeout: "on time",
+          stalemate: "stalemate",
+          insufficient: "insufficient material",
+          threefold: "threefold repetition",
+          fifty: "fifty-move rule",
+          agreement: "mutual agreement",
+        };
+        const reward = awardGame(difficulty, outcome, reasonText[r.reason]);
+        setLastReward({ ...reward, outcome });
+      }
     },
-    [mode, humanColor, bumpStats]
+    [mode, humanColor, bumpStats, difficulty]
   );
 
   const applyMoveRef = useRef<(mv: {
@@ -732,6 +761,7 @@ export function useChessGame() {
       setHint(null);
       setHintsUsed(0);
       setViewIndex(null);
+      setLastReward(null);
     },
     [mode, preferredSide, activeTimeControl]
   );
@@ -807,6 +837,7 @@ export function useChessGame() {
       });
       return;
     }
+    if (!spendCrowns(HINT_COST, "A hint")) return;
     setHintsUsed((h) => h + 1);
     setThinking(true);
     try {
@@ -878,6 +909,7 @@ export function useChessGame() {
     interactive,
     started,
     stats,
+    lastReward,
     drawOfferPending,
     capturedBy,
     // actions

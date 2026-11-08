@@ -1,0 +1,742 @@
+     1→"use client";
+     2→
+     3→/**
+     4→ * LearnView — the academy: tactics puzzles, the Daily Challenge, the
+     5→ * Queen-mate endgame drill and interactive opening lessons, all wired
+     6→ * into the student career (XP, crowns, streaks, achievements).
+     7→ */
+     8→
+     9→import { useEffect, useMemo, useState } from "react";
+    10→import { useAnimationControls, motion } from "framer-motion";
+    11→import confetti from "canvas-confetti";
+    12→import { Chess, type Move, type Square } from "chess.js";
+    13→import {
+    14→  BookOpen,
+    15→  Brain,
+    16→  CalendarCheck,
+    17→  CheckCircle2,
+    18→  Crown,
+    19→  Eye,
+    20→  Flame,
+    21→  GraduationCap,
+    22→  Lightbulb,
+    23→  Pause,
+    24→  Play,
+    25→  RotateCcw,
+    26→  SkipForward,
+    27→  Swords,
+    28→  Sun,
+    29→  Target,
+    30→  Trophy,
+    31→  X,
+    32→} from "lucide-react";
+    33→import { Button } from "@/components/ui/button";
+    34→import { Progress } from "@/components/ui/progress";
+    35→import { ChessBoard } from "@/components/chess/board";
+    36→import { OpeningsLesson } from "@/components/chess/openings-lesson";
+    37→import { usePuzzles } from "@/hooks/use-puzzles";
+    38→import { useDrill } from "@/hooks/use-drill";
+    39→import { useCareer } from "@/hooks/use-career";
+    40→import { OPENINGS, PUZZLES, type Opening } from "@/lib/puzzles";
+    41→import { levelFromXp } from "@/lib/game-store";
+    42→import { awardOpening, dateKey } from "@/lib/career";
+    43→import { cn } from "@/lib/utils";
+    44→
+    45→const CONFETTI_COLORS = ["#e9c96b", "#c9a24b", "#38e0af", "#fdf6dc"];
+    46→
+    47→type LearnTab = "puzzles" | "daily" | "drill" | "openings";
+    48→
+    49→const TIER_STYLE: Record<string, string> = {
+    50→  easy: "border-emerald-400/40 bg-emerald-400/10 text-emerald-300",
+    51→  medium: "border-amber-400/40 bg-amber-400/10 text-amber-300",
+    52→  hard: "border-rose-400/40 bg-rose-400/10 text-rose-300",
+    53→};
+    54→
+    55→export function LearnView() {
+    56→  const [tab, setTab] = useState<LearnTab>("puzzles");
+    57→  const career = useCareer();
+    58→  const [openOpening, setOpenOpening] = useState<Opening | null>(null);
+    59→
+    60→  const lvl = levelFromXp(career.xp);
+    61→
+    62→  const handleOpeningComplete = (id: string) => {
+    63→    awardOpening(id);
+    64→  };
+    65→
+    66→  return (
+    67→    <div className="mx-auto w-full max-w-5xl space-y-4">
+    68→      {/* ---------- student profile ---------- */}
+    69→      <div className="glass-panel rounded-2xl p-4 sm:p-5">
+    70→        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+    71→          <div className="flex items-center gap-3">
+    72→            <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-gold/40 bg-gradient-to-b from-gold/25 to-transparent">
+    73→              <GraduationCap className="h-7 w-7 text-gold-soft" strokeWidth={1.6} />
+    74→              <span className="absolute -bottom-1.5 -right-1.5 rounded-full border border-[#8a6a24] bg-gradient-to-b from-[#ecca6f] to-[#c69c3f] px-1.5 py-px font-mono text-[10px] font-black text-[#241a05]">
+    75→                {lvl.level}
+    76→              </span>
+    77→            </div>
+    78→            <div>
+    79→              <p className="font-display text-lg font-black tracking-wide text-gold-gradient">
+    80→                {lvl.title}
+    81→              </p>
+    82→              <p className="text-[11px] text-foreground/45">
+    83→                {lvl.into}/{lvl.span} XP to level {lvl.level + 1}
+    84→              </p>
+    85→            </div>
+    86→          </div>
+    87→
+    88→          <div className="min-w-[160px] flex-1">
+    89→            <Progress value={(lvl.into / lvl.span) * 100} className="h-2" />
+    90→          </div>
+    91→
+    92→          <div className="flex items-center gap-4 text-center">
+    93→            <MiniStat
+    94→              icon={<Flame className="h-4 w-4 text-orange-300" />}
+    95→              value={career.dailyStreak}
+    96→              label="Day Flame"
+    97→            />
+    98→            <MiniStat
+    99→              icon={<Brain className="h-4 w-4 text-emerald-300" />}
+   100→              value={`${career.solvedPuzzles.length}/${PUZZLES.length}`}
+   101→              label="Puzzles"
+   102→            />
+   103→            <MiniStat
+   104→              icon={<Crown className="h-4 w-4 text-gold-soft" />}
+   105→              value={career.drillWins}
+   106→              label="Drills"
+   107→            />
+   108→            <MiniStat
+   109→              icon={<BookOpen className="h-4 w-4 text-gold-soft/80" />}
+   110→              value={`${career.openingsDone.length}/${OPENINGS.length}`}
+   111→              label="Openings"
+   112→            />
+   113→            <MiniStat
+   114→              icon={<Target className="h-4 w-4 text-emerald-300/80" />}
+   115→              value={career.puzzleStreak}
+   116→              label="Pz Streak"
+   117→            />
+   118→          </div>
+   119→        </div>
+   120→      </div>
+   121→
+   122→      {/* ---------- tab switcher ---------- */}
+   123→      <div className="flex justify-center">
+   124→        <div className="glass-panel inline-flex max-w-full flex-wrap justify-center rounded-full p-1">
+   125→          {(
+   126→            [
+   127→              { id: "puzzles", label: "Puzzles", icon: <Brain className="h-4 w-4" /> },
+   128→              { id: "daily", label: "Daily", icon: <CalendarCheck className="h-4 w-4" /> },
+   129→              { id: "drill", label: "Endgame Drill", icon: <Swords className="h-4 w-4" /> },
+   130→              { id: "openings", label: "Openings", icon: <BookOpen className="h-4 w-4" /> },
+   131→            ] as { id: LearnTab; label: string; icon: React.ReactNode }[]
+   132→          ).map((t) => (
+   133→            <button
+   134→              key={t.id}
+   135→              type="button"
+   136→              onClick={() => {
+   137→                setTab(t.id);
+   138→                setOpenOpening(null);
+   139→              }}
+   140→              className={cn(
+   141→                "flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-semibold transition-all",
+   142→                tab === t.id
+   143→                  ? "border border-[#8a6a24]/50 bg-gradient-to-b from-[#ecca6f] to-[#c69c3f] text-[#241a05]"
+   144→                  : "text-foreground/60 hover:text-foreground"
+   145→              )}
+   146→              aria-pressed={tab === t.id}
+   147→            >
+   148→              {t.icon}
+   149→              <span>{t.label}</span>
+   150→            </button>
+   151→          ))}
+   152→        </div>
+   153→      </div>
+   154→
+   155→      {/* ---------- content ---------- */}
+   156→      {tab === "puzzles" && <PuzzlesPanel key="puzzles" />}
+   157→      {tab === "daily" && <DailyPanel key="daily" />}
+   158→      {tab === "drill" && <DrillPanel key="drill" />}
+   159→      {tab === "openings" && (
+   160→        <OpeningsPanel
+   161→          key="openings"
+   162→          openOpening={openOpening}
+   163→          setOpenOpening={setOpenOpening}
+   164→          onComplete={handleOpeningComplete}
+   165→          done={career.openingsDone}
+   166→        />
+   167→      )}
+   168→    </div>
+   169→  );
+   170→}
+   171→
+   172→function MiniStat({
+   173→  icon,
+   174→  value,
+   175→  label,
+   176→}: {
+   177→  icon: React.ReactNode;
+   178→  value: number | string;
+   179→  label: string;
+   180→}) {
+   181→  return (
+   182→    <div className="flex flex-col items-center">
+   183→      <span className="flex items-center gap-1 font-mono text-base font-bold text-foreground/90">
+   184→        {icon}
+   185→        {value}
+   186→      </span>
+   187→      <span className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-foreground/40">
+   188→        {label}
+   189→      </span>
+   190→    </div>
+   191→  );
+   192→}
+   193→
+   194→/**
+   195→ * Local board selection for learn-mode boards (tap-to-move + drag reveal).
+   196→ * Mirrors the play-room selection semantics against a read-only FEN.
+   197→ */
+   198→function useBoardSelection(
+   199→  fen: string,
+   200→  onMove: (from: Square, to: Square) => boolean
+   201→) {
+   202→  const [selected, setSelected] = useState<Square | null>(null);
+   203→  const [legal, setLegal] = useState<Move[]>([]);
+   204→
+   205→  const select = useMemo(
+   206→    () =>
+   207→      (sq: Square | null) => {
+   208→        if (!sq || selected === sq) {
+   209→          setSelected(null);
+   210→          setLegal([]);
+   211→          return;
+   212→        }
+   213→        const g = new Chess(fen);
+   214→        const piece = g.get(sq);
+   215→        if (piece && piece.color === g.turn()) {
+   216→          setSelected(sq);
+   217→          setLegal(g.moves({ square: sq, verbose: true }));
+   218→          return;
+   219→        }
+   220→        if (selected && legal.some((m) => m.to === sq)) {
+   221→          if (onMove(selected, sq)) {
+   222→            setSelected(null);
+   223→            setLegal([]);
+   224→          }
+   225→          return;
+   226→        }
+   227→        setSelected(null);
+   228→        setLegal([]);
+   229→      },
+   230→    [selected, legal, fen, onMove]
+   231→  );
+   232→
+   233→  return { selected, legal, select };
+   234→}
+   235→
+   236→/* ============================ puzzles ============================ */
+   237→
+   238→type PzHook = ReturnType<typeof usePuzzles>;
+   239→
+   240→/** Shared puzzle board + coaching panel (used by Puzzles and Daily). */
+   241→function PuzzleBoardPanel({
+   242→  pz,
+   243→  variant,
+   244→}: {
+   245→  pz: PzHook;
+   246→  variant: "puzzles" | "daily";
+   247→}) {
+   248→  const p = pz.puzzle;
+   249→  const shake = useAnimationControls();
+   250→  const sel = useBoardSelection(pz.fen, pz.attemptMove);
+   251→
+   252→  useEffect(() => {
+   253→    if (pz.wrongTick > 0) {
+   254→      void shake.start({ x: [0, -9, 9, -6, 6, 0] });
+   255→    }
+   256→  }, [pz.wrongTick, shake]);
+   257→
+   258→  useEffect(() => {
+   259→    if (pz.status === "solved") {
+   260→      window.setTimeout(() => {
+   261→        confetti({
+   262→          particleCount: 90,
+   263→          spread: 90,
+   264→          startVelocity: 34,
+   265→          origin: { y: 0.35 },
+   266→          colors: CONFETTI_COLORS,
+   267→          scalar: 0.9,
+   268→        });
+   269→      }, 250);
+   270→    }
+   271→  }, [pz.status]);
+   272→
+   273→  return (
+   274→    <div className="grid gap-5 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)] lg:items-start">
+   275→      <motion.div animate={shake} className="mx-auto w-full max-w-[440px]">
+   276→        <div className="board-frame relative rounded-2xl p-2 sm:p-2.5">
+   277→          <span className="pointer-events-none absolute -left-0.5 -top-0.5 h-3 w-3 rounded-tl-2xl border-l-2 border-t-2 border-[#fbeec1]/70" />
+   278→          <span className="pointer-events-none absolute -right-0.5 -top-0.5 h-3 w-3 rounded-tr-2xl border-r-2 border-t-2 border-[#fbeec1]/70" />
+   279→          <span className="pointer-events-none absolute -bottom-0.5 -left-0.5 h-3 w-3 rounded-bl-2xl border-b-2 border-l-2 border-[#fbeec1]/70" />
+   280→          <span className="pointer-events-none absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-br-2xl border-b-2 border-r-2 border-[#fbeec1]/70" />
+   281→          <div className="relative overflow-hidden rounded-md shadow-[inset_0_0_24px_rgba(0,0,0,0.55)]">
+   282→            <ChessBoard
+   283→              pieces={pz.pieces}
+   284→              orientation={pz.turn === "w" ? "white" : "black"}
+   285→              turnColor={pz.turn === "b" ? "b" : "w"}
+   286→              selected={sel.selected}
+   287→              legalTargets={sel.legal}
+   288→              lastMove={null}
+   289→              checkedSquare={null}
+   290→              hint={pz.hintFrom ? { from: pz.hintFrom, to: pz.hintFrom } : null}
+   291→              interactive={pz.status === "solving"}
+   292→              showLegal
+   293→              showCoords
+   294→              pendingPromotion={null}
+   295→              promotionColor={pz.turn === "b" ? "b" : "w"}
+   296→              onSelect={sel.select}
+   297→              onMoveAttempt={(from, to) => pz.attemptMove(from, to)}
+   298→              onPromote={() => {}}
+   299→              onCancelPromotion={() => {}}
+   300→              onFirstGesture={() => {}}
+   301→            />
+   302→          </div>
+   303→        </div>
+   304→      </motion.div>
+   305→
+   306→      <div className="space-y-4">
+   307→        <div className="glass-panel rounded-2xl p-4 sm:p-5">
+   308→          <div className="mb-2 flex flex-wrap items-center gap-2">
+   309→            <span
+   310→              className={cn(
+   311→                "rounded-full border px-2.5 py-0.5 text-[10.5px] font-black uppercase tracking-[0.14em]",
+   312→                variant === "daily"
+   313→                  ? "border-gold/50 bg-gold/15 text-gold-soft"
+   314→                  : TIER_STYLE[p.tier]
+   315→              )}
+   316→            >
+   317→              {variant === "daily" ? "Daily Challenge" : p.tier}
+   318→            </span>
+   319→            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-foreground/55">
+   320→              {p.theme}
+   321→            </span>
+   322→            {variant === "puzzles" && (
+   323→              <span className="ml-auto font-mono text-[11px] text-foreground/35">
+   324→                {pz.idx + 1} / {pz.total}
+   325→              </span>
+   326→            )}
+   327→          </div>
+   328→
+   329→          <h3 className="font-display text-xl font-bold text-foreground/95">{p.title}</h3>
+   330→          <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-gold-soft">
+   331→            <Target className="h-3.5 w-3.5" /> {p.goal}
+   332→          </p>
+   333→
+   334→          {/* status zone */}
+   335→          <div className="mt-3">
+   336→            {pz.status === "solving" && (
+   337→              <p className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 text-[13px] leading-relaxed text-foreground/60">
+   338→                {puzzleStepText(pz)}
+   339→              </p>
+   340→            )}
+   341→            {pz.status === "solved" && (
+   342→              <div className="float-in rounded-xl border border-emerald-400/35 bg-emerald-400/10 px-3 py-2.5">
+   343→                <p className="flex items-center gap-1.5 text-[13px] font-bold text-emerald-300">
+   344→                  <Trophy className="h-4 w-4" />
+   345→                  {variant === "daily"
+   346→                    ? "Daily conquered — +30 XP · +20 crowns"
+   347→                    : "Solved — XP + crowns earned"}
+   348→                </p>
+   349→                <p className="mt-1 text-[12.5px] leading-relaxed text-foreground/65">{p.insight}</p>
+   350→                {variant === "daily" && (
+   351→                  <p className="mt-1 text-[12.5px] text-gold-soft">
+   352→                    A new challenge is crowned at midnight.
+   353→                  </p>
+   354→                )}
+   355→              </div>
+   356→            )}
+   357→            {pz.status === "failed" && (
+   358→              <div className="float-in rounded-xl border border-rose-400/35 bg-rose-400/10 px-3 py-2.5">
+   359→                <p className="flex items-center gap-1.5 text-[13px] font-bold text-rose-300">
+   360→                  <X className="h-4 w-4" /> Not that move — the streak resets.
+   361→                </p>
+   362→                <p className="mt-1 text-[12.5px] text-foreground/60">
+   363→                  Study the position once more, take the hint, or watch the idea unfold.
+   364→                </p>
+   365→              </div>
+   366→            )}
+   367→            {pz.status === "revealed" && (
+   368→              <div className="float-in rounded-xl border border-gold/35 bg-gold/10 px-3 py-2.5">
+   369→                <p className="flex items-center gap-1.5 text-[13px] font-bold text-gold-soft">
+   370→                  <Eye className="h-4 w-4" /> Watching the solution
+   371→                </p>
+   372→                <p className="mt-1 text-[12.5px] leading-relaxed text-foreground/65">{p.insight}</p>
+   373→              </div>
+   374→            )}
+   375→          </div>
+   376→
+   377→          {/* actions */}
+   378→          <div className="mt-4 flex flex-wrap gap-2">
+   379→            {pz.status === "solved" && variant === "puzzles" ? (
+   380→              <Button
+   381→                onClick={pz.nextPuzzle}
+   382→                className="h-10 flex-1 border border-[#8a6a24]/50 bg-gradient-to-b from-[#ecca6f] to-[#c69c3f] font-bold text-[#241a05] hover:from-[#f3d887] hover:to-[#d4a94e]"
+   383→              >
+   384→                <SkipForward className="mr-1.5 h-4 w-4" /> Next puzzle
+   385→              </Button>
+   386→            ) : (
+   387→              <>
+   388→                <Button
+   389→                  variant="outline"
+   390→                  onClick={pz.showHint}
+   391→                  disabled={pz.status !== "solving"}
+   392→                  className="h-10 flex-1 border-white/10 bg-white/5 text-[13px] hover:bg-white/10"
+   393→                >
+   394→                  <Lightbulb className="mr-1.5 h-4 w-4 text-gold-soft" /> Hint
+   395→                </Button>
+   396→                <Button
+   397→                  variant="outline"
+   398→                  onClick={pz.revealSolution}
+   399→                  disabled={pz.status === "solved"}
+   400→                  className="h-10 flex-1 border-white/10 bg-white/5 text-[13px] hover:bg-white/10"
+   401→                >
+   402→                  <Eye className="mr-1.5 h-4 w-4" /> Solution
+   403→                </Button>
+   404→                {variant === "puzzles" && (
+   405→                  <Button
+   406→                    variant="outline"
+   407→                    onClick={pz.nextPuzzle}
+   408→                    className="h-10 flex-1 border-white/10 bg-white/5 text-[13px] hover:bg-white/10"
+   409→                  >
+   410→                    <SkipForward className="mr-1.5 h-4 w-4" /> Skip
+   411→                  </Button>
+   412→                )}
+   413→              </>
+   414→            )}
+   415→          </div>
+   416→          {pz.status !== "solved" && pz.status !== "solving" && (
+   417→            <Button
+   418→              variant="outline"
+   419→              onClick={pz.retryPuzzle}
+   420→              className="mt-2 h-10 w-full border-white/10 bg-white/5 text-[13px] hover:bg-white/10"
+   421→            >
+   422→              <RotateCcw className="mr-1.5 h-4 w-4" /> Try again from the start
+   423→            </Button>
+   424→          )}
+   425→        </div>
+   426→
+   427→        <div className="glass-panel rounded-2xl p-4">
+   428→          <p className="mb-2 flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.16em] text-foreground/45">
+   429→            <Lightbulb className="h-3.5 w-3.5 text-gold-soft/70" /> Nudge
+   430→          </p>
+   431→          <p className="text-[13px] leading-relaxed text-foreground/60">{p.hint}</p>
+   432→        </div>
+   433→      </div>
+   434→    </div>
+   435→  );
+   436→}
+   437→
+   438→function PuzzlesPanel() {
+   439→  const pz = usePuzzles();
+   440→  return <PuzzleBoardPanel pz={pz} variant="puzzles" />;
+   441→}
+   442→
+   443→function puzzleStepText(pz: PzHook): string {
+   444→  const line = pz.puzzle.lines[0];
+   445→  const total = line.userMoves.length;
+   446→  if (total === 1) return "One move wins. Find it and play it on the board.";
+   447→  return `Find the winning sequence — move ${Math.min(pz.step + 1, total)} of ${total}. Take your time.`;
+   448→}
+   449→
+   450→/* ============================ daily challenge ============================ */
+   451→
+   452→function DailyPanel() {
+   453→  const pz = usePuzzles({ daily: true });
+   454→  const career = useCareer();
+   455→  const conqueredToday = career.dailyDoneDate === dateKey();
+   456→
+   457→  // countdown to midnight, refreshed every 30s
+   458→  const [now, setNow] = useState(() => Date.now());
+   459→  useEffect(() => {
+   460→    const iv = window.setInterval(() => setNow(Date.now()), 30_000);
+   461→    return () => window.clearInterval(iv);
+   462→  }, []);
+   463→
+   464→  const countdown = useMemo(() => {
+   465→    const end = new Date();
+   466→    end.setHours(24, 0, 0, 0);
+   467→    const ms = Math.max(0, end.getTime() - now);
+   468→    const h = Math.floor(ms / 3_600_000);
+   469→    const m = Math.floor((ms % 3_600_000) / 60_000);
+   470→    return `${h}h ${m}m`;
+   471→  }, [now]);
+   472→
+   473→  const done = pz.status === "solved" || conqueredToday;
+   474→
+   475→  return (
+   476→    <div className="space-y-4">
+   477→      <div
+   478→        className={cn(
+   479→          "glass-panel float-in relative overflow-hidden rounded-2xl p-4 sm:p-5",
+   480→          done && "border-emerald-400/30"
+   481→        )}
+   482→      >
+   483→        <div
+   484→          aria-hidden="true"
+   485→          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_120%_at_80%_0%,rgba(212,175,55,0.12),transparent_65%)]"
+   486→        />
+   487→        <div className="relative flex flex-wrap items-center gap-x-6 gap-y-2">
+   488→          <div className="flex items-center gap-3">
+   489→            <div className="logo-glow flex h-11 w-11 items-center justify-center rounded-xl border border-gold/40 bg-gradient-to-b from-gold/25 to-transparent">
+   490→              <Sun className="h-5.5 w-5.5 text-gold-soft" strokeWidth={1.7} />
+   491→            </div>
+   492→            <div>
+   493→              <p className="font-display text-lg font-black tracking-wide text-gold-gradient">
+   494→                The Daily Challenge
+   495→              </p>
+   496→              <p className="text-[11.5px] text-foreground/50">
+   497→                One curated tactic per day — double rewards for showing up.
+   498→              </p>
+   499→            </div>
+   500→          </div>
+   501→          <div className="ml-auto flex items-center gap-3 text-center">
+   502→            <MiniStat
+   503→              icon={<Flame className={cn("h-4 w-4", done ? "text-orange-300" : "text-foreground/40")} />}
+   504→              value={career.dailyStreak}
+   505→              label="Day Flame"
+   506→            />
+   507→            <MiniStat
+   508→              icon={<Crown className="h-4 w-4 text-gold-soft" />}
+   509→              value={conqueredToday ? "✓" : "+20"}
+   510→              label={conqueredToday ? "Claimed" : "Crowns"}
+   511→            />
+   512→            <MiniStat
+   513→              icon={<Brain className="h-4 w-4 text-emerald-300" />}
+   514→              value={conqueredToday ? "✓" : "+30"}
+   515→              label={conqueredToday ? "Claimed" : "XP"}
+   516→            />
+   517→            <div className="hidden flex-col items-center sm:flex">
+   518→              <span className="font-mono text-base font-bold text-foreground/90">{countdown}</span>
+   519→              <span className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-foreground/40">
+   520→                Next challenge
+   521→              </span>
+   522→            </div>
+   523→          </div>
+   524→        </div>
+   525→        {done && (
+   526→          <p className="relative mt-3 flex items-center gap-1.5 text-[12.5px] font-semibold text-emerald-300">
+   527→            <CheckCircle2 className="h-4 w-4" />
+   528→            Conquered today — the next challenge arrives in {countdown}.
+   529→          </p>
+   530→        )}
+   531→      </div>
+   532→
+   533→      <PuzzleBoardPanel pz={pz} variant="daily" />
+   534→    </div>
+   535→  );
+   536→}
+   537→
+   538→/* ============================ drill ============================ */
+   539→
+   540→function DrillPanel() {
+   541→  const dr = useDrill();
+   542→  const interactive = dr.status === "playing" && !dr.thinking && dr.turn === "w";
+   543→  const sel = useBoardSelection(dr.fen, (from, to) => dr.attemptMove(from, to));
+   544→
+   545→  return (
+   546→    <div className="grid gap-5 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)] lg:items-start">
+   547→      <div className="mx-auto w-full max-w-[440px]">
+   548→        <div className="board-frame relative rounded-2xl p-2 sm:p-2.5">
+   549→          <span className="pointer-events-none absolute -left-0.5 -top-0.5 h-3 w-3 rounded-tl-2xl border-l-2 border-t-2 border-[#fbeec1]/70" />
+   550→          <span className="pointer-events-none absolute -right-0.5 -top-0.5 h-3 w-3 rounded-tr-2xl border-r-2 border-t-2 border-[#fbeec1]/70" />
+   551→          <span className="pointer-events-none absolute -bottom-0.5 -left-0.5 h-3 w-3 rounded-bl-2xl border-b-2 border-l-2 border-[#fbeec1]/70" />
+   552→          <span className="pointer-events-none absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-br-2xl border-b-2 border-r-2 border-[#fbeec1]/70" />
+   553→          <div className="relative overflow-hidden rounded-md shadow-[inset_0_0_24px_rgba(0,0,0,0.55)]">
+   554→            <ChessBoard
+   555→              pieces={dr.pieces}
+   556→              orientation="white"
+   557→              turnColor={dr.turn === "b" ? "b" : "w"}
+   558→              selected={sel.selected}
+   559→              legalTargets={sel.legal}
+   560→              lastMove={dr.lastMove}
+   561→              checkedSquare={null}
+   562→              hint={null}
+   563→              interactive={interactive}
+   564→              showLegal
+   565→              showCoords
+   566→              pendingPromotion={null}
+   567→              promotionColor={dr.turn === "b" ? "b" : "w"}
+   568→              onSelect={sel.select}
+   569→              onMoveAttempt={(from, to) => dr.attemptMove(from, to)}
+   570→              onPromote={() => {}}
+   571→              onCancelPromotion={() => {}}
+   572→              onFirstGesture={() => {}}
+   573→            />
+   574→          </div>
+   575→        </div>
+   576→      </div>
+   577→
+   578→      <div className="space-y-4">
+   579→        <div className="glass-panel rounded-2xl p-4 sm:p-5">
+   580→          <div className="mb-1 flex flex-wrap items-center gap-2">
+   581→            <span className="rounded-full border border-gold/40 bg-gold/10 px-2.5 py-0.5 text-[10.5px] font-black uppercase tracking-[0.14em] text-gold-soft">
+   582→              Technique
+   583→            </span>
+   584→            <span className="ml-auto font-mono text-[11px] text-foreground/40">
+   585→              Your moves: <b className="text-gold-soft">{dr.moveCount}</b>
+   586→            </span>
+   587→          </div>
+   588→          <h3 className="font-display text-xl font-bold text-foreground/95">
+   589→            Checkmate with King &amp; Queen
+   590→          </h3>
+   591→          <p className="mt-1 text-[13px] leading-relaxed text-foreground/60">
+   592→            You command <b className="text-foreground/85">White</b>. Corner the lone king using the
+   593→            golden rule: <i className="text-gold-soft">the king walks in front, the queen delivers from a
+   594→            distance.</i>{" "}
+   595→            Stalemate is a fail — give the enemy king room to breathe until the final blow.
+   596→          </p>
+   597→
+   598→          <div className="mt-3">
+   599→            {dr.status === "playing" && (
+   600→              <p className="flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 text-[13px] text-foreground/60">
+   601→                {dr.thinking ? (
+   602→                  <>
+   603→                    <Pause className="h-3.5 w-3.5 text-emerald-300" />
+   604→                    The king slips away…
+   605→                  </>
+   606→                ) : (
+   607→                  <>
+   608→                    <Play className="h-3.5 w-3.5 text-emerald-300" />
+   609→                    Your move — march the king and queen together.
+   610→                  </>
+   611→                )}
+   612→              </p>
+   613→            )}
+   614→            {dr.status === "won" && (
+   615→              <div className="float-in rounded-xl border border-emerald-400/35 bg-emerald-400/10 px-3 py-2.5">
+   616→                <p className="flex items-center gap-1.5 text-[13px] font-bold text-emerald-300">
+   617→                  <CheckCircle2 className="h-4 w-4" /> Checkmate in {dr.moveCount} moves — +8 XP, +5 crowns!
+   618→                </p>
+   619→                <p className="mt-1 text-[12.5px] text-foreground/60">
+   620→                  {dr.profile?.drillBest !== null && dr.profile?.drillBest !== undefined
+   621→                    ? `Your record: ${dr.profile.drillBest} moves.`
+   622→                    : ""}{" "}
+   623→                  The basic K+Q mate usually takes 10 or fewer.
+   624→                </p>
+   625→              </div>
+   626→            )}
+   627→            {dr.status === "drawn" && (
+   628→              <div className="float-in rounded-xl border border-rose-400/35 bg-rose-400/10 px-3 py-2.5">
+   629→                <p className="flex items-center gap-1.5 text-[13px] font-bold text-rose-300">
+   630→                  <X className="h-4 w-4" /> Stalemate — the king escaped with a draw.
+   631→                </p>
+   632→                <p className="mt-1 text-[12.5px] text-foreground/60">
+   633→                  Keep the enemy king constrained to ever-smaller boxes, one rank or file at a time.
+   634→                </p>
+   635→              </div>
+   636→            )}
+   637→          </div>
+   638→
+   639→          <Button
+   640→            onClick={dr.restart}
+   641→            className="mt-4 h-10 w-full border border-[#8a6a24]/50 bg-gradient-to-b from-[#ecca6f] to-[#c69c3f] font-bold text-[#241a05] hover:from-[#f3d887] hover:to-[#d4a94e]"
+   642→          >
+   643→            <RotateCcw className="mr-1.5 h-4 w-4" />
+   644→            {dr.status === "playing" ? "New random position" : "Try again"}
+   645→          </Button>
+   646→        </div>
+   647→
+   648→        <div className="glass-panel rounded-2xl p-4">
+   649→          <p className="mb-2 flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.16em] text-foreground/45">
+   650→            <Lightbulb className="h-3.5 w-3.5 text-gold-soft/70" /> The box method
+   651→          </p>
+   652→          <ul className="space-y-1.5 text-[13px] leading-relaxed text-foreground/60">
+   653→            <li>1. Shrink the box: use the queen to cut off a rank or a file.</li>
+   654→            <li>2. Bring the king closer — the king does half the mating work.</li>
+   655→            <li>3. When the enemy king sits on the edge, deliver with stalemate-avoiding checks.</li>
+   656→          </ul>
+   657→        </div>
+   658→      </div>
+   659→    </div>
+   660→  );
+   661→}
+   662→
+   663→/* ============================ openings ============================ */
+   664→
+   665→function OpeningsPanel({
+   666→  openOpening,
+   667→  setOpenOpening,
+   668→  onComplete,
+   669→  done,
+   670→}: {
+   671→  openOpening: Opening | null;
+   672→  setOpenOpening: (o: Opening | null) => void;
+   673→  onComplete: (id: string) => void;
+   674→  done: string[];
+   675→}) {
+   676→  if (openOpening) {
+   677→    return (
+   678→      <OpeningsLesson
+   679→        opening={openOpening}
+   680→        onClose={() => setOpenOpening(null)}
+   681→        onComplete={onComplete}
+   682→      />
+   683→    );
+   684→  }
+   685→
+   686→  return (
+   687→    <div className="grid gap-4 sm:grid-cols-2">
+   688→      {OPENINGS.map((o) => {
+   689→        const completed = done.includes(o.id);
+   690→        return (
+   691→          <button
+   692→            key={o.id}
+   693→            type="button"
+   694→            onClick={() => setOpenOpening(o)}
+   695→            className="glass-panel glass-panel-hover group rounded-2xl p-5 text-left"
+   696→          >
+   697→            <div className="mb-2 flex items-center gap-2">
+   698→              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[10px] tracking-widest text-foreground/50">
+   699→                {o.eco}
+   700→              </span>
+   701→              <span
+   702→                className={cn(
+   703→                  "rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em]",
+   704→                  o.side === "White"
+   705→                    ? "border border-gold/40 bg-gold/10 text-gold-soft"
+   706→                    : "border border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+   707→                )}
+   708→              >
+   709→                for {o.side}
+   710→              </span>
+   711→              {completed && (
+   712→                <span className="ml-auto flex items-center gap-1 text-[11px] font-bold text-emerald-300">
+   713→                  <CheckCircle2 className="h-3.5 w-3.5" /> mastered
+   714→                </span>
+   715→              )}
+   716→            </div>
+   717→            <h3 className="font-display text-lg font-bold text-foreground/95 transition-colors group-hover:text-gold-soft">
+   718→              {o.name}
+   719→            </h3>
+   720→            <p className="mt-0.5 text-[12.5px] text-foreground/50">{o.tagline}</p>
+   721→            <div className="mt-3 flex flex-wrap gap-1.5">
+   722→              {o.moves.slice(0, 4).map((m, i) => (
+   723→                <span
+   724→                  key={i}
+   725→                  className="rounded-md border border-white/8 bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-foreground/70"
+   726→                >
+   727→                  {m.san}
+   728→                </span>
+   729→              ))}
+   730→              {o.moves.length > 4 && (
+   731→                <span className="px-1 py-0.5 text-[11px] text-foreground/35">
+   732→                  +{o.moves.length - 4} more
+   733→                </span>
+   734→              )}
+   735→            </div>
+   736→          </button>
+   737→        );
+   738→      })}
+   739→    </div>
+   740→  );
+   741→}
+   742→

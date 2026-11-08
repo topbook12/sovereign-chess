@@ -1,17 +1,19 @@
 "use client";
 
 /**
- * LearnView — the academy: tactics puzzles, the Queen-mate endgame drill
- * and interactive opening lessons, all wired into the student profile.
+ * LearnView — the academy: tactics puzzles, the Daily Challenge, the
+ * Queen-mate endgame drill and interactive opening lessons, all wired
+ * into the student career (XP, crowns, streaks, achievements).
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAnimationControls, motion } from "framer-motion";
 import confetti from "canvas-confetti";
 import { Chess, type Move, type Square } from "chess.js";
 import {
   BookOpen,
   Brain,
+  CalendarCheck,
   CheckCircle2,
   Crown,
   Eye,
@@ -23,6 +25,7 @@ import {
   RotateCcw,
   SkipForward,
   Swords,
+  Sun,
   Target,
   Trophy,
   X,
@@ -33,13 +36,15 @@ import { ChessBoard } from "@/components/chess/board";
 import { OpeningsLesson } from "@/components/chess/openings-lesson";
 import { usePuzzles } from "@/hooks/use-puzzles";
 import { useDrill } from "@/hooks/use-drill";
+import { useCareer } from "@/hooks/use-career";
 import { OPENINGS, PUZZLES, type Opening } from "@/lib/puzzles";
-import { levelFromXp, loadProfile, updateProfile, type LearningProfile } from "@/lib/game-store";
+import { levelFromXp } from "@/lib/game-store";
+import { awardOpening, dateKey } from "@/lib/career";
 import { cn } from "@/lib/utils";
 
 const CONFETTI_COLORS = ["#e9c96b", "#c9a24b", "#38e0af", "#fdf6dc"];
 
-type LearnTab = "puzzles" | "drill" | "openings";
+type LearnTab = "puzzles" | "daily" | "drill" | "openings";
 
 const TIER_STYLE: Record<string, string> = {
   easy: "border-emerald-400/40 bg-emerald-400/10 text-emerald-300",
@@ -49,29 +54,13 @@ const TIER_STYLE: Record<string, string> = {
 
 export function LearnView() {
   const [tab, setTab] = useState<LearnTab>("puzzles");
-  const [profile, setProfile] = useState<LearningProfile | null>(null);
+  const career = useCareer();
   const [openOpening, setOpenOpening] = useState<Opening | null>(null);
 
-  // the panels own their game hooks; the header follows the shared profile
-  useEffect(() => {
-    const t = window.setTimeout(() => setProfile(loadProfile()), 0);
-    const iv = window.setInterval(() => setProfile(loadProfile()), 1500);
-    return () => {
-      window.clearInterval(iv);
-      window.clearTimeout(t);
-    };
-  }, []);
-
-  const lvl = levelFromXp(profile?.xp ?? 0);
+  const lvl = levelFromXp(career.xp);
 
   const handleOpeningComplete = (id: string) => {
-    setProfile(
-      updateProfile((prev) => ({
-        ...prev,
-        xp: prev.xp + 10,
-        openingsDone: prev.openingsDone.includes(id) ? prev.openingsDone : [...prev.openingsDone, id],
-      }))
-    );
+    awardOpening(id);
   };
 
   return (
@@ -103,23 +92,28 @@ export function LearnView() {
           <div className="flex items-center gap-4 text-center">
             <MiniStat
               icon={<Flame className="h-4 w-4 text-orange-300" />}
-              value={profile?.puzzleStreak ?? 0}
-              label="Streak"
+              value={career.dailyStreak}
+              label="Day Flame"
             />
             <MiniStat
               icon={<Brain className="h-4 w-4 text-emerald-300" />}
-              value={`${profile?.solvedPuzzles.length ?? 0}/${PUZZLES.length}`}
+              value={`${career.solvedPuzzles.length}/${PUZZLES.length}`}
               label="Puzzles"
             />
             <MiniStat
               icon={<Crown className="h-4 w-4 text-gold-soft" />}
-              value={profile?.drillWins ?? 0}
+              value={career.drillWins}
               label="Drills"
             />
             <MiniStat
               icon={<BookOpen className="h-4 w-4 text-gold-soft/80" />}
-              value={`${profile?.openingsDone.length ?? 0}/${OPENINGS.length}`}
+              value={`${career.openingsDone.length}/${OPENINGS.length}`}
               label="Openings"
+            />
+            <MiniStat
+              icon={<Target className="h-4 w-4 text-emerald-300/80" />}
+              value={career.puzzleStreak}
+              label="Pz Streak"
             />
           </div>
         </div>
@@ -127,10 +121,11 @@ export function LearnView() {
 
       {/* ---------- tab switcher ---------- */}
       <div className="flex justify-center">
-        <div className="glass-panel inline-flex rounded-full p-1">
+        <div className="glass-panel inline-flex max-w-full flex-wrap justify-center rounded-full p-1">
           {(
             [
               { id: "puzzles", label: "Puzzles", icon: <Brain className="h-4 w-4" /> },
+              { id: "daily", label: "Daily", icon: <CalendarCheck className="h-4 w-4" /> },
               { id: "drill", label: "Endgame Drill", icon: <Swords className="h-4 w-4" /> },
               { id: "openings", label: "Openings", icon: <BookOpen className="h-4 w-4" /> },
             ] as { id: LearnTab; label: string; icon: React.ReactNode }[]
@@ -159,6 +154,7 @@ export function LearnView() {
 
       {/* ---------- content ---------- */}
       {tab === "puzzles" && <PuzzlesPanel key="puzzles" />}
+      {tab === "daily" && <DailyPanel key="daily" />}
       {tab === "drill" && <DrillPanel key="drill" />}
       {tab === "openings" && (
         <OpeningsPanel
@@ -166,7 +162,7 @@ export function LearnView() {
           openOpening={openOpening}
           setOpenOpening={setOpenOpening}
           onComplete={handleOpeningComplete}
-          done={profile?.openingsDone ?? []}
+          done={career.openingsDone}
         />
       )}
     </div>
@@ -206,30 +202,31 @@ function useBoardSelection(
   const [selected, setSelected] = useState<Square | null>(null);
   const [legal, setLegal] = useState<Move[]>([]);
 
-  const select = useCallback(
-    (sq: Square | null) => {
-      if (!sq || selected === sq) {
-        setSelected(null);
-        setLegal([]);
-        return;
-      }
-      const g = new Chess(fen);
-      const piece = g.get(sq);
-      if (piece && piece.color === g.turn()) {
-        setSelected(sq);
-        setLegal(g.moves({ square: sq, verbose: true }));
-        return;
-      }
-      if (selected && legal.some((m) => m.to === sq)) {
-        if (onMove(selected, sq)) {
+  const select = useMemo(
+    () =>
+      (sq: Square | null) => {
+        if (!sq || selected === sq) {
           setSelected(null);
           setLegal([]);
+          return;
         }
-        return;
-      }
-      setSelected(null);
-      setLegal([]);
-    },
+        const g = new Chess(fen);
+        const piece = g.get(sq);
+        if (piece && piece.color === g.turn()) {
+          setSelected(sq);
+          setLegal(g.moves({ square: sq, verbose: true }));
+          return;
+        }
+        if (selected && legal.some((m) => m.to === sq)) {
+          if (onMove(selected, sq)) {
+            setSelected(null);
+            setLegal([]);
+          }
+          return;
+        }
+        setSelected(null);
+        setLegal([]);
+      },
     [selected, legal, fen, onMove]
   );
 
@@ -238,8 +235,17 @@ function useBoardSelection(
 
 /* ============================ puzzles ============================ */
 
-function PuzzlesPanel() {
-  const pz = usePuzzles();
+type PzHook = ReturnType<typeof usePuzzles>;
+
+/** Shared puzzle board + coaching panel (used by Puzzles and Daily). */
+function PuzzleBoardPanel({
+  pz,
+  variant,
+}: {
+  pz: PzHook;
+  variant: "puzzles" | "daily";
+}) {
+  const p = pz.puzzle;
   const shake = useAnimationControls();
   const sel = useBoardSelection(pz.fen, pz.attemptMove);
 
@@ -264,8 +270,6 @@ function PuzzlesPanel() {
     }
   }, [pz.status]);
 
-  const p = pz.puzzle;
-
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)] lg:items-start">
       <motion.div animate={shake} className="mx-auto w-full max-w-[440px]">
@@ -277,7 +281,7 @@ function PuzzlesPanel() {
           <div className="relative overflow-hidden rounded-md shadow-[inset_0_0_24px_rgba(0,0,0,0.55)]">
             <ChessBoard
               pieces={pz.pieces}
-              orientation={pz.turn === "w" ? "white" : "black"}
+              orientation={pz.puzzle.fen.split(" ")[1] === "b" ? "black" : "white"}
               turnColor={pz.turn === "b" ? "b" : "w"}
               selected={sel.selected}
               legalTargets={sel.legal}
@@ -305,17 +309,21 @@ function PuzzlesPanel() {
             <span
               className={cn(
                 "rounded-full border px-2.5 py-0.5 text-[10.5px] font-black uppercase tracking-[0.14em]",
-                TIER_STYLE[p.tier]
+                variant === "daily"
+                  ? "border-gold/50 bg-gold/15 text-gold-soft"
+                  : TIER_STYLE[p.tier]
               )}
             >
-              {p.tier}
+              {variant === "daily" ? "Daily Challenge" : p.tier}
             </span>
             <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-foreground/55">
               {p.theme}
             </span>
-            <span className="ml-auto font-mono text-[11px] text-foreground/35">
-              {pz.idx + 1} / {pz.total}
-            </span>
+            {variant === "puzzles" && (
+              <span className="ml-auto font-mono text-[11px] text-foreground/35">
+                {pz.idx + 1} / {pz.total}
+              </span>
+            )}
           </div>
 
           <h3 className="font-display text-xl font-bold text-foreground/95">{p.title}</h3>
@@ -333,9 +341,17 @@ function PuzzlesPanel() {
             {pz.status === "solved" && (
               <div className="float-in rounded-xl border border-emerald-400/35 bg-emerald-400/10 px-3 py-2.5">
                 <p className="flex items-center gap-1.5 text-[13px] font-bold text-emerald-300">
-                  <Trophy className="h-4 w-4" /> Solved — +5 XP
+                  <Trophy className="h-4 w-4" />
+                  {variant === "daily"
+                    ? "Daily conquered — +30 XP · +20 crowns"
+                    : "Solved — XP + crowns earned"}
                 </p>
                 <p className="mt-1 text-[12.5px] leading-relaxed text-foreground/65">{p.insight}</p>
+                {variant === "daily" && (
+                  <p className="mt-1 text-[12.5px] text-gold-soft">
+                    A new challenge is crowned at midnight.
+                  </p>
+                )}
               </div>
             )}
             {pz.status === "failed" && (
@@ -360,7 +376,7 @@ function PuzzlesPanel() {
 
           {/* actions */}
           <div className="mt-4 flex flex-wrap gap-2">
-            {pz.status === "solved" ? (
+            {pz.status === "solved" && variant === "puzzles" ? (
               <Button
                 onClick={pz.nextPuzzle}
                 className="h-10 flex-1 border border-[#8a6a24]/50 bg-gradient-to-b from-[#ecca6f] to-[#c69c3f] font-bold text-[#241a05] hover:from-[#f3d887] hover:to-[#d4a94e]"
@@ -380,21 +396,24 @@ function PuzzlesPanel() {
                 <Button
                   variant="outline"
                   onClick={pz.revealSolution}
+                  disabled={pz.status === "solved"}
                   className="h-10 flex-1 border-white/10 bg-white/5 text-[13px] hover:bg-white/10"
                 >
                   <Eye className="mr-1.5 h-4 w-4" /> Solution
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={pz.nextPuzzle}
-                  className="h-10 flex-1 border-white/10 bg-white/5 text-[13px] hover:bg-white/10"
-                >
-                  <SkipForward className="mr-1.5 h-4 w-4" /> Skip
-                </Button>
+                {variant === "puzzles" && (
+                  <Button
+                    variant="outline"
+                    onClick={pz.nextPuzzle}
+                    className="h-10 flex-1 border-white/10 bg-white/5 text-[13px] hover:bg-white/10"
+                  >
+                    <SkipForward className="mr-1.5 h-4 w-4" /> Skip
+                  </Button>
+                )}
               </>
             )}
           </div>
-          {(pz.status === "failed" || pz.status === "revealed") && (
+          {pz.status !== "solved" && pz.status !== "solving" && (
             <Button
               variant="outline"
               onClick={pz.retryPuzzle}
@@ -416,11 +435,104 @@ function PuzzlesPanel() {
   );
 }
 
-function puzzleStepText(pz: ReturnType<typeof usePuzzles>): string {
+function PuzzlesPanel() {
+  const pz = usePuzzles();
+  return <PuzzleBoardPanel pz={pz} variant="puzzles" />;
+}
+
+function puzzleStepText(pz: PzHook): string {
   const line = pz.puzzle.lines[0];
   const total = line.userMoves.length;
   if (total === 1) return "One move wins. Find it and play it on the board.";
   return `Find the winning sequence — move ${Math.min(pz.step + 1, total)} of ${total}. Take your time.`;
+}
+
+/* ============================ daily challenge ============================ */
+
+function DailyPanel() {
+  const pz = usePuzzles({ daily: true });
+  const career = useCareer();
+  const conqueredToday = career.dailyDoneDate === dateKey();
+
+  // countdown to midnight, refreshed every 30s
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const iv = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(iv);
+  }, []);
+
+  const countdown = useMemo(() => {
+    const end = new Date();
+    end.setHours(24, 0, 0, 0);
+    const ms = Math.max(0, end.getTime() - now);
+    const h = Math.floor(ms / 3_600_000);
+    const m = Math.floor((ms % 3_600_000) / 60_000);
+    return `${h}h ${m}m`;
+  }, [now]);
+
+  const done = pz.status === "solved" || conqueredToday;
+
+  return (
+    <div className="space-y-4">
+      <div
+        className={cn(
+          "glass-panel float-in relative overflow-hidden rounded-2xl p-4 sm:p-5",
+          done && "border-emerald-400/30"
+        )}
+      >
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_120%_at_80%_0%,rgba(212,175,55,0.12),transparent_65%)]"
+        />
+        <div className="relative flex flex-wrap items-center gap-x-6 gap-y-2">
+          <div className="flex items-center gap-3">
+            <div className="logo-glow flex h-11 w-11 items-center justify-center rounded-xl border border-gold/40 bg-gradient-to-b from-gold/25 to-transparent">
+              <Sun className="h-5.5 w-5.5 text-gold-soft" strokeWidth={1.7} />
+            </div>
+            <div>
+              <p className="font-display text-lg font-black tracking-wide text-gold-gradient">
+                The Daily Challenge
+              </p>
+              <p className="text-[11.5px] text-foreground/50">
+                One curated tactic per day — double rewards for showing up.
+              </p>
+            </div>
+          </div>
+          <div className="ml-auto flex items-center gap-3 text-center">
+            <MiniStat
+              icon={<Flame className={cn("h-4 w-4", done ? "text-orange-300" : "text-foreground/40")} />}
+              value={career.dailyStreak}
+              label="Day Flame"
+            />
+            <MiniStat
+              icon={<Crown className="h-4 w-4 text-gold-soft" />}
+              value={conqueredToday ? "✓" : "+20"}
+              label={conqueredToday ? "Claimed" : "Crowns"}
+            />
+            <MiniStat
+              icon={<Brain className="h-4 w-4 text-emerald-300" />}
+              value={conqueredToday ? "✓" : "+30"}
+              label={conqueredToday ? "Claimed" : "XP"}
+            />
+            <div className="hidden flex-col items-center sm:flex">
+              <span className="font-mono text-base font-bold text-foreground/90">{countdown}</span>
+              <span className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-foreground/40">
+                Next challenge
+              </span>
+            </div>
+          </div>
+        </div>
+        {done && (
+          <p className="relative mt-3 flex items-center gap-1.5 text-[12.5px] font-semibold text-emerald-300">
+            <CheckCircle2 className="h-4 w-4" />
+            Conquered today — the next challenge arrives in {countdown}.
+          </p>
+        )}
+      </div>
+
+      <PuzzleBoardPanel pz={pz} variant="daily" />
+    </div>
+  );
 }
 
 /* ============================ drill ============================ */
@@ -502,7 +614,7 @@ function DrillPanel() {
             {dr.status === "won" && (
               <div className="float-in rounded-xl border border-emerald-400/35 bg-emerald-400/10 px-3 py-2.5">
                 <p className="flex items-center gap-1.5 text-[13px] font-bold text-emerald-300">
-                  <CheckCircle2 className="h-4 w-4" /> Checkmate in {dr.moveCount} moves — +8 XP!
+                  <CheckCircle2 className="h-4 w-4" /> Checkmate in {dr.moveCount} moves — +8 XP, +5 crowns!
                 </p>
                 <p className="mt-1 text-[12.5px] text-foreground/60">
                   {dr.profile?.drillBest !== null && dr.profile?.drillBest !== undefined

@@ -9,7 +9,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chess, type Move, type Square } from "chess.js";
 import { playSound } from "@/lib/sounds";
 import { fenToPieces } from "@/lib/chess-utils";
-import { loadProfile, updateProfile, type LearningProfile } from "@/lib/game-store";
+import { loadProfile, type LearningProfile } from "@/lib/game-store";
+import { awardDrill } from "@/lib/career";
 
 export type DrillStatus = "playing" | "won" | "drawn";
 
@@ -182,14 +183,8 @@ export function useDrill() {
         const next = moveCount + 1;
         setStatus("won");
         playSound("win");
-        setProfile(
-          updateProfile((prev) => ({
-            ...prev,
-            xp: prev.xp + 8,
-            drillWins: prev.drillWins + 1,
-            drillBest: prev.drillBest === null ? next : Math.min(prev.drillBest, next),
-          }))
-        );
+        awardDrill(next);
+        setProfile(loadProfile());
         return true;
       }
       if (g.isDraw() || g.isStalemate()) {

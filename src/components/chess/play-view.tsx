@@ -5,10 +5,9 @@
  * clocks, hints and a post-game gateway into the analysis room.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import confetti from "canvas-confetti";
 import { Timer } from "lucide-react";
-import { Chess } from "chess.js";
 import type { Difficulty } from "@/hooks/use-chess-game";
 import { ChessBoard } from "@/components/chess/board";
 import { EvalBar, PlayerStrip } from "@/components/chess/panels";
@@ -19,14 +18,12 @@ import {
   MovesCard,
   PrefsCard,
 } from "@/components/chess/sidebars";
-import {
-  DrawOfferDialog,
-  GameOverDialog,
-} from "@/components/chess/dialogs";
+import { DrawOfferDialog } from "@/components/chess/dialogs";
 import { StatusStrip } from "@/components/chess/chrome";
-import { saveRecentGame, type StoredGame } from "@/lib/game-store";
 import { cn } from "@/lib/utils";
 import type { ChessGame } from "@/hooks/use-chess-game";
+
+const CONFETTI_COLORS = ["#e9c96b", "#c9a24b", "#38e0af", "#fdf6dc", "#1c5a48"];
 
 const LEVEL_LABELS: Record<Difficulty, string> = {
   easy: "Apprentice",
@@ -35,26 +32,13 @@ const LEVEL_LABELS: Record<Difficulty, string> = {
   master: "Sovereign",
 };
 
-const CONFETTI_COLORS = ["#e9c96b", "#c9a24b", "#38e0af", "#fdf6dc", "#1c5a48"];
-
 export function PlayView({
   game,
-  onAnalyzeGame,
   onRequestNewGame,
 }: {
   game: ChessGame;
-  onAnalyzeGame: (g: StoredGame) => void;
   onRequestNewGame: () => void;
 }) {
-  // game-over modal is derived from game state; `dismissedKey` remembers which
-  // finished game the user closed so the modal never re-appears mid-review
-  const [dismissedKey, setDismissedKey] = useState<string | null>(null);
-  const resultKey = game.result
-    ? `${game.result.reason}-${game.result.winner ?? "none"}-${game.history.length}`
-    : null;
-  const gameOverOpen =
-    game.status === "ended" && game.result !== null && resultKey !== dismissedKey;
-
   // celebrate wins (async — keeps the effect body free of cascading renders)
   useEffect(() => {
     if (game.status !== "ended" || !game.result) return;
@@ -89,43 +73,6 @@ export function PlayView({
     }, 380);
     return () => window.clearTimeout(t);
   }, [game.status, game.result, game.mode, game.humanColor]);
-
-  /** serialize the finished game into the learning store */
-  const analyzeCurrentGame = () => {
-    if (!game.result || game.history.length === 0) return;
-    try {
-      const c = new Chess();
-      for (const m of game.history) {
-        c.move({ from: m.from, to: m.to, promotion: m.promotion });
-      }
-      const resultStr =
-        game.result.winner === "white" ? "1-0" : game.result.winner === "black" ? "0-1" : "1/2-1/2";
-      c.header(
-        "Event",
-        "Sovereign Chess",
-        "White",
-        game.mode === "ai" && game.humanColor !== "white" ? "The Grandmaster" : "White",
-        "Black",
-        game.mode === "ai" && game.humanColor !== "black" ? "The Grandmaster" : "Black",
-        "Result",
-        resultStr
-      );
-      const label =
-        game.mode === "ai"
-          ? `You vs The Grandmaster (${LEVEL_LABELS[game.difficulty]})`
-          : "White vs Black — two players";
-      const stored = saveRecentGame({
-        pgn: c.pgn(),
-        plies: game.history.length,
-        result: resultStr,
-        label,
-        reason: game.result.reason,
-      });
-      onAnalyzeGame(stored);
-    } catch {
-      /* serialization hiccup — non-fatal */
-    }
-  };
 
   const unlimited = game.activeTimeControl.initialMs === 0;
   const topColor = game.orientation === "white" ? "black" : "white";
@@ -228,14 +175,6 @@ export function PlayView({
         <PrefsCard game={game} />
       </div>
 
-      <GameOverDialog
-        open={gameOverOpen}
-        onOpenChange={(v) => {
-          if (!v) setDismissedKey(resultKey);
-        }}
-        game={game}
-        onAnalyze={analyzeCurrentGame}
-      />
       <DrawOfferDialog game={game} />
 
       {/* subtle gold top glow */}

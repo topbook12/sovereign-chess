@@ -137,12 +137,12 @@ export function ControlsCard({
               >
                 <Lightbulb className="h-4 w-4 text-gold-soft" />
                 <span className="text-xs">Hint</span>
-                <span className="absolute -right-1.5 -top-1.5 rounded-full bg-emerald-400/20 px-1.5 text-[10px] font-bold text-emerald-300 ring-1 ring-emerald-400/40">
-                  {Math.max(0, 3 - game.hintsUsed)}
+                <span className="absolute -right-1.5 -top-1.5 flex items-center gap-0.5 rounded-full bg-gold/20 px-1.5 text-[10px] font-bold text-gold-soft ring-1 ring-gold/50">
+                  <Crown className="h-2.5 w-2.5" />10 · {Math.max(0, 3 - game.hintsUsed)}
                 </span>
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Ask the oracle for the best move</TooltipContent>
+            <TooltipContent>Ask the oracle for the best move — costs 10 crowns</TooltipContent>
           </Tooltip>
 
           <Tooltip>

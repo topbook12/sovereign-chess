@@ -6,11 +6,12 @@
  * All views stay mounted so game/analysis/puzzle state survives tab switches.
  */
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useChessGame } from "@/hooks/use-chess-game";
 import { PlayView } from "@/components/chess/play-view";
 import { AnalyzeView } from "@/components/chess/analyze-view";
 import { LearnView } from "@/components/chess/learn-view";
+import { CareerView } from "@/components/chess/career-view";
 import {
   DrawOfferDialog,
   GameOverDialog,
@@ -19,16 +20,14 @@ import {
 } from "@/components/chess/dialogs";
 import { AuroraBackground, Footer, Header } from "@/components/chess/chrome";
 import { BottomNav, type AppTab } from "@/components/chess/bottom-nav";
-import { saveRecentGame, type StoredGame } from "@/lib/game-store";
-import { Chess } from "chess.js";
+import { type StoredGame } from "@/lib/game-store";
+import { serializeGame } from "@/lib/chess-utils";
+import { setPlatformTotals } from "@/lib/career";
+import { PUZZLES, OPENINGS } from "@/lib/puzzles";
 import { cn } from "@/lib/utils";
 
-const LEVEL_LABELS: Record<string, string> = {
-  easy: "Apprentice",
-  medium: "Knight",
-  hard: "Grandmaster",
-  master: "Sovereign",
-};
+// tell the career engine how many puzzles / openings the academy holds
+setPlatformTotals(PUZZLES.length, OPENINGS.length);
 
 export default function Home() {
   const game = useChessGame();
@@ -37,6 +36,7 @@ export default function Home() {
   const [rulesOpen, setRulesOpen] = useState(false);
   const [pendingGame, setPendingGame] = useState<StoredGame | null>(null);
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
+  const archiveRef = useRef<Map<string, StoredGame>>(new Map());
 
   const resultKey = game.result
     ? `${game.result.reason}-${game.result.winner ?? "none"}-${game.history.length}`
@@ -44,48 +44,29 @@ export default function Home() {
   const gameOverOpen =
     game.status === "ended" && game.result !== null && resultKey !== dismissedKey;
 
-  /** serialize the finished game into the learning store, then jump to analysis */
-  const analyzeCurrentGame = () => {
-    if (!game.result || game.history.length === 0) return;
+  /** serialize once per finished game (deduped), persisting into Recent Duels */
+  const archiveCurrentGame = useCallback((): StoredGame | null => {
+    if (!resultKey || game.status !== "ended") return null;
+    const cached = archiveRef.current.get(resultKey);
+    if (cached) return cached;
+    const stored = serializeGame(game);
+    if (stored) archiveRef.current.set(resultKey, stored);
+    return stored;
+  }, [game, resultKey]);
+
+  // auto-archive every finished duel into Recent Duels (external write, no state)
+  useEffect(() => {
+    if (game.status === "ended") archiveCurrentGame();
+  }, [game.status, archiveCurrentGame]);
+
+  /** jump into the oracle with the finished game loaded */
+  const analyzeCurrentGame = useCallback(() => {
+    const stored = archiveCurrentGame();
+    if (!stored) return;
     setDismissedKey(resultKey); // close the game-over modal on this path
-    try {
-      const c = new Chess();
-      for (const m of game.history) {
-        c.move({ from: m.from, to: m.to, promotion: m.promotion });
-      }
-      const resultStr =
-        game.result.winner === "white"
-          ? "1-0"
-          : game.result.winner === "black"
-            ? "0-1"
-            : "1/2-1/2";
-      c.header(
-        "Event",
-        "Sovereign Chess",
-        "White",
-        game.mode === "ai" && game.humanColor !== "white" ? "The Grandmaster" : "White",
-        "Black",
-        game.mode === "ai" && game.humanColor !== "black" ? "The Grandmaster" : "Black",
-        "Result",
-        resultStr
-      );
-      const label =
-        game.mode === "ai"
-          ? `You vs The Grandmaster (${LEVEL_LABELS[game.difficulty]})`
-          : "White vs Black — two players";
-      const stored = saveRecentGame({
-        pgn: c.pgn(),
-        plies: game.history.length,
-        result: resultStr,
-        label,
-        reason: game.result.reason,
-      });
-      setPendingGame(stored);
-      setTab("analyze");
-    } catch {
-      /* serialization hiccup — non-fatal */
-    }
-  };
+    setPendingGame(stored);
+    setTab("analyze");
+  }, [archiveCurrentGame, resultKey]);
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -106,7 +87,6 @@ export default function Home() {
         <div className={cn(tab !== "play" && "hidden")}>
           <PlayView
             game={game}
-            onAnalyzeGame={analyzeCurrentGame}
             onRequestNewGame={() => setNewGameOpen(true)}
           />
         </div>
@@ -122,6 +102,11 @@ export default function Home() {
         {/* ---------------- learn room ---------------- */}
         <div className={cn(tab !== "learn" && "hidden")}>
           <LearnView />
+        </div>
+
+        {/* ---------------- career room ---------------- */}
+        <div className={cn(tab !== "career" && "hidden")}>
+          <CareerView onGoAnalyze={() => setTab("analyze")} />
         </div>
       </main>
 
@@ -142,6 +127,7 @@ export default function Home() {
         }}
         game={game}
         onAnalyze={analyzeCurrentGame}
+        onOpenCareer={() => setTab("career")}
       />
       <DrawOfferDialog game={game} />
       <RulesDialog open={rulesOpen} onOpenChange={setRulesOpen} />

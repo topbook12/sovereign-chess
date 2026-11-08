@@ -2,7 +2,8 @@
  * Shared chess helpers used across play, analysis and learning views.
  */
 
-import type { Color, PieceSymbol, Square } from "chess.js";
+import { Chess, type Color, type PieceSymbol, type Square } from "chess.js";
+import { saveRecentGame, type StoredGame } from "@/lib/game-store";
 
 export interface PieceView {
   id: string;
@@ -75,4 +76,67 @@ export function formatEval(cp: number, mateIn?: number): string {
   const pawns = cp / 100;
   if (Math.abs(pawns) < 0.05) return "0.0";
   return `${pawns > 0 ? "+" : ""}${pawns.toFixed(1)}`;
+}
+
+/* ---------------- game serialization ---------------- */
+
+/** Minimal shape of a finished game, satisfied by the useChessGame hook. */
+export interface SerializableGame {
+  history: { from: string; to: string; promotion?: string }[];
+  result: { winner: "white" | "black" | null; reason: string } | null;
+  mode: "ai" | "human";
+  humanColor: "white" | "black";
+  difficulty: string;
+}
+
+const LEVEL_LABELS: Record<string, string> = {
+  easy: "Apprentice",
+  medium: "Knight",
+  hard: "Grandmaster",
+  master: "Sovereign",
+};
+
+/** Serialize a finished game into a PGN-backed StoredGame (returns null if nothing to record). */
+export function serializeGame(game: SerializableGame): StoredGame | null {
+  if (!game.result || game.history.length === 0) return null;
+  try {
+    const c = new Chess();
+    for (const m of game.history) {
+      c.move({
+        from: m.from as never,
+        to: m.to as never,
+        promotion: m.promotion as never,
+      });
+    }
+    const resultStr =
+      game.result.winner === "white"
+        ? "1-0"
+        : game.result.winner === "black"
+          ? "0-1"
+          : "1/2-1/2";
+    c.header(
+      "Event",
+      "Sovereign Chess",
+      "White",
+      game.mode === "ai" && game.humanColor !== "white" ? "The Grandmaster" : "White",
+      "Black",
+      game.mode === "ai" && game.humanColor !== "black" ? "The Grandmaster" : "Black",
+      "Result",
+      resultStr
+    );
+    const label =
+      game.mode === "ai"
+        ? `You vs The Grandmaster (${LEVEL_LABELS[game.difficulty] ?? game.difficulty})`
+        : "White vs Black — two players";
+    return saveRecentGame({
+      pgn: c.pgn(),
+      plies: game.history.length,
+      result: resultStr as StoredGame["result"],
+      label,
+      reason: game.result.reason,
+    });
+  } catch {
+    /* serialization hiccup — non-fatal */
+    return null;
+  }
 }

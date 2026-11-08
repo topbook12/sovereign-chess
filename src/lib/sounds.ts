@@ -14,6 +14,8 @@ export type SoundName =
   | "draw"
   | "tick"
   | "select"
+  | "achievement"
+  | "levelup"
   | "illegal";
 
 let ctx: AudioContext | null = null;
@@ -165,6 +167,19 @@ export function playSound(name: SoundName) {
         break;
       case "tick":
         tone(1250, 0.03, { type: "square", gain: 0.045 });
+        break;
+      case "achievement":
+        // bright two-note sparkle
+        tone(1319, 0.1, { type: "triangle", gain: 0.13 });
+        tone(1760, 0.22, { type: "triangle", gain: 0.15, delay: 0.09 });
+        break;
+      case "levelup":
+        // regal ascending arpeggio
+        tone(523, 0.12, { type: "triangle", gain: 0.15 });
+        tone(659, 0.12, { type: "triangle", gain: 0.15, delay: 0.1 });
+        tone(784, 0.12, { type: "triangle", gain: 0.16, delay: 0.2 });
+        tone(1047, 0.16, { type: "triangle", gain: 0.17, delay: 0.3 });
+        tone(1319, 0.42, { type: "triangle", gain: 0.18, delay: 0.42 });
         break;
       case "illegal":
         tone(180, 0.09, { type: "sawtooth", gain: 0.08, slideTo: 120 });
