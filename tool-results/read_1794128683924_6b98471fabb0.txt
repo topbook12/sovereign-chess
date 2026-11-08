@@ -1,0 +1,908 @@
+     1→     1→"use client";
+     2→     2→
+     3→     3→import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+     4→     4→import {
+     5→     5→  Chess,
+     6→     6→  type Move,
+     7→     7→  type Square,
+     8→     8→  type Color,
+     9→     9→  type PieceSymbol,
+    10→    10→} from "chess.js";
+    11→    11→import { playSound, primeAudio, setSoundEnabled } from "@/lib/sounds";
+    12→    12→import { toast } from "sonner";
+    13→    13→
+    14→    14→export type GameMode = "ai" | "human";
+    15→    15→export type Difficulty = "easy" | "medium" | "hard" | "master";
+    16→    16→export type Side = "white" | "black";
+    17→    17→
+    18→    18→export interface TimeControl {
+    19→    19→  id: string;
+    20→    20→  label: string;
+    21→    21→  initialMs: number;
+    22→    22→  incrementMs: number;
+    23→    23→}
+    24→    24→
+    25→    25→export const TIME_CONTROLS: TimeControl[] = [
+    26→    26→  { id: "bullet", label: "1 + 0 Bullet", initialMs: 60_000, incrementMs: 0 },
+    27→    27→  { id: "blitz3", label: "3 + 2 Blitz", initialMs: 180_000, incrementMs: 2_000 },
+    28→    28→  { id: "blitz5", label: "5 + 0 Blitz", initialMs: 300_000, incrementMs: 0 },
+    29→    29→  { id: "rapid", label: "10 + 0 Rapid", initialMs: 600_000, incrementMs: 0 },
+    30→    30→  { id: "unlimited", label: "Unlimited", initialMs: 0, incrementMs: 0 },
+    31→    31→];
+    32→    32→
+    33→    33→export type PromotionPiece = "q" | "r" | "b" | "n";
+    34→    34→
+    35→    35→export interface PieceView {
+    36→    36→  id: string;
+    37→    37→  square: Square;
+    38→    38→  type: PieceSymbol;
+    39→    39→  color: Color;
+    40→    40→  captured?: boolean;
+    41→    41→  spawn?: boolean;
+    42→    42→  spawnDelay?: number;
+    43→    43→}
+    44→    44→
+    45→    45→export interface GameResult {
+    46→    46→  winner: Side | null;
+    47→    47→  reason:
+    48→    48→    | "checkmate"
+    49→    49→    | "resignation"
+    50→    50→    | "timeout"
+    51→    51→    | "stalemate"
+    52→    52→    | "insufficient"
+    53→    53→    | "threefold"
+    54→    54→    | "fifty"
+    55→    55→    | "agreement";
+    56→    56→}
+    57→    57→
+    58→    58→export interface EngineInfo {
+    59→    59→  evalCp: number;
+    60→    60→  mateIn?: number;
+    61→    61→  depth: number;
+    62→    62→  nodes: number;
+    63→    63→  timeMs: number;
+    64→    64→  level: Difficulty;
+    65→    65→}
+    66→    66→
+    67→    67→interface Stats {
+    68→    68→  wins: number;
+    69→    69→  losses: number;
+    70→    70→  draws: number;
+    71→    71→}
+    72→    72→
+    73→    73→const STATS_KEY = "sovereign-chess-stats-v1";
+    74→    74→const SETTINGS_KEY = "sovereign-chess-settings-v1";
+    75→    75→
+    76→    76→const PIECE_VALUE: Record<PieceSymbol, number> = {
+    77→    77→  p: 1,
+    78→    78→  n: 3,
+    79→    79→  b: 3,
+    80→    80→  r: 5,
+    81→    81→  q: 9,
+    82→    82→  k: 0,
+    83→    83→};
+    84→    84→
+    85→    85→function loadJSON<T>(key: string, fallback: T): T {
+    86→    86→  if (typeof window === "undefined") return fallback;
+    87→    87→  try {
+    88→    88→    const raw = window.localStorage.getItem(key);
+    89→    89→    return raw ? { ...fallback, ...(JSON.parse(raw) as object) } as T : fallback;
+    90→    90→  } catch {
+    91→    91→    return fallback;
+    92→    92→  }
+    93→    93→}
+    94→    94→
+    95→    95→function sideOf(c: Color): Side {
+    96→    96→  return c === "w" ? "white" : "black";
+    97→    97→}
+    98→    98→function charOf(s: Side): Color {
+    99→    99→  return s === "white" ? "w" : "b";
+   100→   100→}
+   101→   101→
+   102→   102→function fenToPieces(fen: string, opts?: { spawn?: boolean }): PieceView[] {
+   103→   103→  const placement = fen.split(" ")[0];
+   104→   104→  const rows = placement.split("/");
+   105→   105→  const out: PieceView[] = [];
+   106→   106→  let n = 0;
+   107→   107→  for (let r = 0; r < 8; r++) {
+   108→   108→    let file = 0;
+   109→   109→    for (const ch of rows[r]) {
+   110→   110→      if (/\d/.test(ch)) {
+   111→   111→        file += Number(ch);
+   112→   112→        continue;
+   113→   113→      }
+   114→   114→      const color: Color = ch === ch.toUpperCase() ? "w" : "b";
+   115→   115→      const type = ch.toLowerCase() as PieceSymbol;
+   116→   116→      const rank = 8 - r;
+   117→   117→      const square = `${String.fromCharCode(97 + file)}${rank}` as Square;
+   118→   118→      out.push({
+   119→   119→        id: `p${n}-${color}${type}-${square}`,
+   120→   120→        square,
+   121→   121→        type,
+   122→   122→        color,
+   123→   123→        spawn: opts?.spawn,
+   124→   124→        spawnDelay: opts?.spawn ? n * 14 : 0,
+   125→   125→      });
+   126→   126→      n++;
+   127→   127→      file++;
+   128→   128→    }
+   129→   129→  }
+   130→   130→  return out;
+   131→   131→}
+   132→   132→
+   133→   133→function classifyDraw(game: Chess): GameResult["reason"] {
+   134→   134→  if (game.isStalemate()) return "stalemate";
+   135→   135→  if (game.isThreefoldRepetition()) return "threefold";
+   136→   136→  if (game.isInsufficientMaterial()) return "insufficient";
+   137→   137→  return "fifty";
+   138→   138→}
+   139→   139→
+   140→   140→export function useChessGame() {
+   141→   141→  const gameRef = useRef<Chess>(new Chess());
+   142→   142→  const idRef = useRef(0);
+   143→   143→  const engineReqRef = useRef(0);
+   144→   144→  const clockSideRef = useRef<Color>("w");
+   145→   145→  const endedRef = useRef(false); // makes endGame idempotent across delayed timers
+   146→   146→  const engineFailRef = useRef(0); // consecutive engine failures (for retry toast)
+   147→   147→
+   148→   148→  // ---------- persisted preferences (hydrated after mount to avoid SSR mismatch) ----------
+   149→   149→  const [mode, setMode] = useState<GameMode>("ai");
+   150→   150→  const [difficulty, setDifficulty] = useState<Difficulty>("hard");
+   151→   151→  const [soundOn, setSoundOn] = useState(true);
+   152→   152→  const [showLegal, setShowLegal] = useState(true);
+   153→   153→  const [showCoords, setShowCoords] = useState(true);
+   154→   154→  const [autoQueen, setAutoQueen] = useState(false);
+   155→   155→  const [preferredSide, setPreferredSide] = useState<Side>("white");
+   156→   156→
+   157→   157→  // ---------- core game state ----------
+   158→   158→  const [fen, setFen] = useState(gameRef.current.fen());
+   159→   159→  const [pieces, setPieces] = useState<PieceView[]>(() =>
+   160→   160→    fenToPieces(gameRef.current.fen(), { spawn: true })
+   161→   161→  );
+   162→   162→  const [history, setHistory] = useState<Move[]>([]);
+   163→   163→  const [turn, setTurn] = useState<Color>("w");
+   164→   164→  const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(
+   165→   165→    null
+   166→   166→  );
+   167→   167→  const [inCheck, setInCheck] = useState(false);
+   168→   168→  const [checkedSquare, setCheckedSquare] = useState<Square | null>(null);
+   169→   169→
+   170→   170→  const [selected, setSelected] = useState<Square | null>(null);
+   171→   171→  const [legalForSelected, setLegalForSelected] = useState<Move[]>([]);
+   172→   172→  const [pendingPromotion, setPendingPromotion] = useState<{
+   173→   173→    from: Square;
+   174→   174→    to: Square;
+   175→   175→  } | null>(null);
+   176→   176→
+   177→   177→  const [status, setStatus] = useState<"active" | "ended">("active");
+   178→   178→  const [result, setResult] = useState<GameResult | null>(null);
+   179→   179→  const [drawOfferPending, setDrawOfferPending] = useState<Color | null>(null);
+   180→   180→
+   181→   181→  const [orientation, setOrientation] = useState<Side>("white");
+   182→   182→  const [humanColor, setHumanColor] = useState<Side>("white");
+   183→   183→
+   184→   184→  const [activeTimeControl, setActiveTimeControl] = useState<TimeControl>(
+   185→   185→    TIME_CONTROLS.find((t) => t.id === "blitz5") ?? TIME_CONTROLS[3]
+   186→   186→  );
+   187→   187→  const [clocks, setClocks] = useState<{ w: number; b: number }>(() => {
+   188→   188→    const tc = TIME_CONTROLS.find((t) => t.id === "blitz5") ?? TIME_CONTROLS[3];
+   189→   189→    return { w: tc.initialMs, b: tc.initialMs };
+   190→   190→  });
+   191→   191→
+   192→   192→  const [thinking, setThinking] = useState(false);
+   193→   193→  const [engineInfo, setEngineInfo] = useState<EngineInfo | null>(null);
+   194→   194→  const [hint, setHint] = useState<{ from: Square; to: Square } | null>(null);
+   195→   195→  const [hintsUsed, setHintsUsed] = useState(0);
+   196→   196→
+   197→   197→  const [viewIndex, setViewIndex] = useState<number | null>(null);
+   198→   198→  const [engineRetryTick, setEngineRetryTick] = useState(0);
+   199→   199→
+   200→   200→  const [stats, setStats] = useState<Stats>({ wins: 0, losses: 0, draws: 0 });
+   201→   201→
+   202→   202→  // ---------- derived ----------
+   203→   203→  const engineColor: Color = humanColor === "white" ? "b" : "w";
+   204→   204→  const isHumanTurn = mode === "human" || turn === charOf(humanColor);
+   205→   205→  const started = history.length >= 1;
+   206→   206→  const interactive =
+   207→   207→    status === "active" &&
+   208→   208→    viewIndex === null &&
+   209→   209→    !pendingPromotion &&
+   210→   210→    isHumanTurn;
+   211→   211→  const viewing = viewIndex !== null;
+   212→   212→
+   213→   213→  const viewFen = useMemo(
+   214→   214→    () =>
+   215→   215→      viewing && history[viewIndex as number]
+   216→   216→        ? history[viewIndex as number].after
+   217→   217→        : fen,
+   218→   218→    [viewing, viewIndex, history, fen]
+   219→   219→  );
+   220→   220→
+   221→   221→  const displayPieces = useMemo(
+   222→   222→    () => (viewing ? fenToPieces(viewFen) : pieces),
+   223→   223→    [viewing, viewFen, pieces]
+   224→   224→  );
+   225→   225→
+   226→   226→  const capturedBy = useMemo(() => {
+   227→   227→    const byWhite: PieceSymbol[] = [];
+   228→   228→    const byBlack: PieceSymbol[] = [];
+   229→   229→    for (const m of history) {
+   230→   230→      if (m.captured) {
+   231→   231→        (m.color === "w" ? byWhite : byBlack).push(m.captured);
+   232→   232→      }
+   233→   233→    }
+   234→   234→    const val = (p: PieceSymbol) => PIECE_VALUE[p];
+   235→   235→    const desc = (a: PieceSymbol, b: PieceSymbol) => val(b) - val(a);
+   236→   236→    byWhite.sort(desc);
+   237→   237→    byBlack.sort(desc);
+   238→   238→    const materialWhite = byWhite.reduce((s, p) => s + val(p), 0);
+   239→   239→    const materialBlack = byBlack.reduce((s, p) => s + val(p), 0);
+   240→   240→    return {
+   241→   241→      byWhite,
+   242→   242→      byBlack,
+   243→   243→      diff: materialWhite - materialBlack, // + means white ahead
+   244→   244→    };
+   245→   245→  }, [history]);
+   246→   246→
+   247→   247→  // ---------- persistence ----------
+   248→   248→  useEffect(() => {
+   249→   249→    setSoundEnabled(soundOn);
+   250→   250→  }, [soundOn]);
+   251→   251→
+   252→   252→  useEffect(() => {
+   253→   253→    const s = loadJSON(SETTINGS_KEY, {
+   254→   254→      mode: "ai" as GameMode,
+   255→   255→      difficulty: "hard" as Difficulty,
+   256→   256→      timeControlId: "blitz5",
+   257→   257→      side: "white" as Side,
+   258→   258→      sound: true,
+   259→   259→      showLegal: true,
+   260→   260→      showCoords: true,
+   261→   261→      autoQueen: false,
+   262→   262→    });
+   263→   263→    setMode(s.mode);
+   264→   264→    setDifficulty(s.difficulty);
+   265→   265→    setSoundOn(s.sound);
+   266→   266→    setShowLegal(s.showLegal);
+   267→   267→    setShowCoords(s.showCoords);
+   268→   268→    setAutoQueen(s.autoQueen);
+   269→   269→    setPreferredSide(s.side);
+   270→   270→    setOrientation(s.side);
+   271→   271→    setHumanColor(s.side);
+   272→   272→    const tc = TIME_CONTROLS.find((t) => t.id === s.timeControlId);
+   273→   273→    if (tc) {
+   274→   274→      setActiveTimeControl(tc);
+   275→   275→      setClocks({ w: tc.initialMs, b: tc.initialMs });
+   276→   276→    }
+   277→   277→  }, []);
+   278→   278→
+   279→   279→  useEffect(() => {
+   280→   280→    try {
+   281→   281→      window.localStorage.setItem(
+   282→   282→        SETTINGS_KEY,
+   283→   283→        JSON.stringify({
+   284→   284→          mode,
+   285→   285→          difficulty,
+   286→   286→          timeControlId: activeTimeControl.id,
+   287→   287→          side: preferredSide,
+   288→   288→          sound: soundOn,
+   289→   289→          showLegal,
+   290→   290→          showCoords,
+   291→   291→          autoQueen,
+   292→   292→        })
+   293→   293→      );
+   294→   294→    } catch {
+   295→   295→      /* ignore */
+   296→   296→    }
+   297→   297→  }, [
+   298→   298→    mode,
+   299→   299→    difficulty,
+   300→   300→    activeTimeControl.id,
+   301→   301→    preferredSide,
+   302→   302→    soundOn,
+   303→   303→    showLegal,
+   304→   304→    showCoords,
+   305→   305→    autoQueen,
+   306→   306→  ]);
+   307→   307→
+   308→   308→  useEffect(() => {
+   309→   309→    setStats(loadJSON<Stats>(STATS_KEY, { wins: 0, losses: 0, draws: 0 }));
+   310→   310→  }, []);
+   311→   311→
+   312→   312→  const bumpStats = useCallback((r: GameResult) => {
+   313→   313→    setStats((prev) => {
+   314→   314→      const next = { ...prev };
+   315→   315→      if (!r.winner) next.draws++;
+   316→   316→      else if (r.winner === humanColor) next.wins++;
+   317→   317→      else next.losses++;
+   318→   318→      try {
+   319→   319→        window.localStorage.setItem(STATS_KEY, JSON.stringify(next));
+   320→   320→      } catch {
+   321→   321→        /* ignore */
+   322→   322→      }
+   323→   323→      return next;
+   324→   324→    });
+   325→   325→  }, [humanColor]);
+   326→   326→
+   327→   327→  // ---------- helpers ----------
+   328→   328→  const refreshBoardState = useCallback((rebuildPieces = true) => {
+   329→   329→    const g = gameRef.current;
+   330→   330→    setFen(g.fen());
+   331→   331→    setTurn(g.turn());
+   332→   332→    const tail = g.history({ verbose: true });
+   333→   333→    setHistory(tail);
+   334→   334→    const lm = tail[tail.length - 1];
+   335→   335→    setLastMove(lm ? { from: lm.from, to: lm.to } : null);
+   336→   336→    const check = g.isCheck();
+   337→   337→    setInCheck(check);
+   338→   338→    if (check) {
+   339→   339→      const board = g.board();
+   340→   340→      let kingSq: Square | null = null;
+   341→   341→      for (const row of board) {
+   342→   342→        for (const sq of row) {
+   343→   343→          if (sq && sq.type === "k" && sq.color === g.turn()) {
+   344→   344→            kingSq = sq.square;
+   345→   345→          }
+   346→   346→        }
+   347→   347→      }
+   348→   348→      setCheckedSquare(kingSq);
+   349→   349→    } else {
+   350→   350→      setCheckedSquare(null);
+   351→   351→    }
+   352→   352→    if (rebuildPieces) {
+   353→   353→      setPieces(fenToPieces(g.fen()));
+   354→   354→    }
+   355→   355→  }, []);
+   356→   356→
+   357→   357→  const endGame = useCallback(
+   358→   358→    (r: GameResult, opts?: { silent?: boolean; countStats?: boolean }) => {
+   359→   359→      if (endedRef.current) return; // a finished game can never end twice
+   360→   360→      if (gameRef.current.isGameOver() === false && r.reason === "checkmate") return;
+   361→   361→      endedRef.current = true;
+   362→   362→      engineReqRef.current++; // invalidate any in-flight engine request
+   363→   363→      setThinking(false);
+   364→   364→      setStatus("ended");
+   365→   365→      setResult(r);
+   366→   366→      setSelected(null);
+   367→   367→      setLegalForSelected([]);
+   368→   368→      setPendingPromotion(null);
+   369→   369→      setHint(null);
+   370→   370→      if (!opts?.silent) {
+   371→   371→        if (!r.winner) playSound("draw");
+   372→   372→        else if (mode === "human") playSound("win");
+   373→   373→        else if (r.winner === humanColor) playSound("win");
+   374→   374→        else playSound("lose");
+   375→   375→      }
+   376→   376→      if (opts?.countStats !== false && mode === "ai") bumpStats(r);
+   377→   377→    },
+   378→   378→    [mode, humanColor, bumpStats]
+   379→   379→  );
+   380→   380→
+   381→   381→  const applyMoveRef = useRef<(mv: {
+   382→   382→    from: Square;
+   383→   383→    to: Square;
+   384→   384→    promotion?: PromotionPiece;
+   385→   385→  }) => boolean>(() => false);
+   386→   386→
+   387→   387→  // ---------- engine ----------
+   388→   388→  const requestEngineMove = useCallback(
+   389→   389→    async (reqId: number) => {
+   390→   390→      const g = gameRef.current;
+   391→   391→      setThinking(true);
+   392→   392→      const t0 = Date.now();
+   393→   393→      try {
+   394→   394→        const res = await fetch("/api/engine", {
+   395→   395→          method: "POST",
+   396→   396→          headers: { "Content-Type": "application/json" },
+   397→   397→          body: JSON.stringify({ fen: g.fen(), level: difficulty }),
+   398→   398→        });
+   399→   399→        if (!res.ok) throw new Error(`Engine error ${res.status}`);
+   400→   400→        const data = (await res.json()) as {
+   401→   401→          from: Square;
+   402→   402→          to: Square;
+   403→   403→          promotion?: string;
+   404→   404→          san: string;
+   405→   405→          evalCp: number;
+   406→   406→          mateIn?: number;
+   407→   407→          depth: number;
+   408→   408→          nodes: number;
+   409→   409→          timeMs: number;
+   410→   410→        };
+   411→   411→        if (
+   412→   412→          reqId !== engineReqRef.current ||
+   413→   413→          status !== "active" ||
+   414→   414→          gameRef.current.fen() !== g.fen()
+   415→   415→        ) {
+   416→   416→          return; // stale
+   417→   417→        }
+   418→   418→        engineFailRef.current = 0;
+   419→   419→        // reveal the move with a brief arrow, then play it
+   420→   420→        setHint({ from: data.from, to: data.to });
+   421→   421→        const wait = Math.max(180, 600 - (Date.now() - t0));
+   422→   422→        await new Promise((r) => setTimeout(r, wait));
+   423→   423→        if (reqId !== engineReqRef.current || status !== "active") return;
+   424→   424→        setHint(null);
+   425→   425→        applyMoveRef.current({
+   426→   426→          from: data.from,
+   427→   427→          to: data.to,
+   428→   428→          promotion: (data.promotion as PromotionPiece) ?? "q",
+   429→   429→        });
+   430→   430→        setEngineInfo({
+   431→   431→          evalCp: data.evalCp,
+   432→   432→          mateIn: data.mateIn,
+   433→   433→          depth: data.depth,
+   434→   434→          nodes: data.nodes,
+   435→   435→          timeMs: data.timeMs,
+   436→   436→          level: difficulty,
+   437→   437→        });
+   438→   438→      } catch {
+   439→   439→        if (reqId === engineReqRef.current) {
+   440→   440→          setThinking(false);
+   441→   441→          lastEngineTurnKey.current = "";
+   442→   442→          if (engineFailRef.current === 0) {
+   443→   443→            toast.error("Engine hiccup — retrying…");
+   444→   444→          }
+   445→   445→          engineFailRef.current++;
+   446→   446→          // automatic retry with a small backoff keeps the game alive
+   447→   447→          window.setTimeout(() => setEngineRetryTick((t) => t + 1), 1500);
+   448→   448→        }
+   449→   449→      } finally {
+   450→   450→        if (reqId === engineReqRef.current) setThinking(false);
+   451→   451→      }
+   452→   452→    },
+   453→   453→    [difficulty, status]
+   454→   454→  );
+   455→   455→
+   456→   456→  // ---------- moving ----------
+   457→   457→  const applyMove = useCallback(
+   458→   458→    (mv: { from: Square; to: Square; promotion?: PromotionPiece }): boolean => {
+   459→   459→      const g = gameRef.current;
+   460→   460→      let move: Move;
+   461→   461→      try {
+   462→   462→        move = g.move({ from: mv.from, to: mv.to, promotion: mv.promotion ?? "q" });
+   463→   463→      } catch {
+   464→   464→        playSound("illegal");
+   465→   465→        return false;
+   466→   466→      }
+   467→   467→
+   468→   468→      idRef.current++;
+   469→   469→      // reconcile animated pieces
+   470→   470→      setPieces((prev) => {
+   471→   471→        const next: PieceView[] = [];
+   472→   472→        const epSquare = move.flags.includes("e")
+   473→   473→          ? (`${move.to[0]}${move.from[1]}` as Square)
+   474→   474→          : null;
+   475→   475→        for (const p of prev) {
+   476→   476→          if (p.captured) continue; // already fading
+   477→   477→          if (epSquare && p.square === epSquare && p.color !== move.color) {
+   478→   478→            next.push({ ...p, id: `${p.id}-x${idRef.current}`, captured: true });
+   479→   479→            continue;
+   480→   480→          }
+   481→   481→          if (p.square === move.to && p.color !== move.color) {
+   482→   482→            next.push({ ...p, id: `${p.id}-x${idRef.current}`, captured: true });
+   483→   483→            continue;
+   484→   484→          }
+   485→   485→          if (p.square === move.from && p.color === move.color && p.type === move.piece) {
+   486→   486→            next.push({
+   487→   487→              ...p,
+   488→   488→              square: move.to,
+   489→   489→              type: move.promotion ?? p.type,
+   490→   490→            });
+   491→   491→            continue;
+   492→   492→          }
+   493→   493→          // castling rook
+   494→   494→          if (
+   495→   495→            move.piece === "k" &&
+   496→   496→            p.type === "r" &&
+   497→   497→            p.color === move.color &&
+   498→   498→            (move.flags.includes("k") &&
+   499→   499→              p.square === (move.color === "w" ? "h1" : "h8"))
+   500→   500→          ) {
+   501→   501→            next.push({
+   502→   502→              ...p,
+   503→   503→              square: (move.color === "w" ? "f1" : "f8") as Square,
+   504→   504→            });
+   505→   505→            continue;
+   506→   506→          }
+   507→   507→          if (
+   508→   508→            move.piece === "k" &&
+   509→   509→            p.type === "r" &&
+   510→   510→            p.color === move.color &&
+   511→   511→            (move.flags.includes("q") &&
+   512→   512→              p.square === (move.color === "w" ? "a1" : "a8"))
+   513→   513→          ) {
+   514→   514→            next.push({
+   515→   515→              ...p,
+   516→   516→              square: (move.color === "w" ? "d1" : "d8") as Square,
+   517→   517→            });
+   518→   518→            continue;
+   519→   519→          }
+   520→   520→          next.push(p);
+   521→   521→        }
+   522→   522→        return next;
+   523→   523→      });
+   524→   524→
+   525→   525→      // cleanup captured fade-out pieces
+   526→   526→      window.setTimeout(() => {
+   527→   527→        setPieces((prev) => prev.filter((p) => !p.captured));
+   528→   528→      }, 320);
+   529→   529→
+   530→   530→      refreshBoardState(false);
+   531→   531→
+   532→   532→      // sounds
+   533→   533→      if (move.flags.includes("k") || move.flags.includes("q")) playSound("castle");
+   534→   534→      else if (move.captured) playSound("capture");
+   535→   535→      else if (move.promotion) playSound("promote");
+   536→   536→      else playSound("move");
+   537→   537→
+   538→   538→      const gg = gameRef.current;
+   539→   539→      if (gg.isCheckmate()) {
+   540→   540→        window.setTimeout(
+   541→   541→          () =>
+   542→   542→            endGame({
+   543→   543→              winner: sideOf(gg.turn() === "w" ? "b" : "w"),
+   544→   544→              reason: "checkmate",
+   545→   545→            }),
+   546→   546→          420
+   547→   547→        );
+   548→   548→      } else if (gg.isDraw()) {
+   549→   549→        window.setTimeout(() => endGame({ winner: null, reason: classifyDraw(gg) }), 420);
+   550→   550→      } else if (gg.isCheck()) {
+   551→   551→        window.setTimeout(() => playSound("check"), 90);
+   552→   552→      }
+   553→   553→
+   554→   554→      setSelected(null);
+   555→   555→      setLegalForSelected([]);
+   556→   556→      setPendingPromotion(null);
+   557→   557→      return true;
+   558→   558→    },
+   559→   559→    [endGame, refreshBoardState]
+   560→   560→  );
+   561→   561→
+   562→   562→  useEffect(() => {
+   563→   563→    applyMoveRef.current = applyMove;
+   564→   564→  }, [applyMove]);
+   565→   565→
+   566→   566→  const attemptMove = useCallback(
+   567→   567→    (from: Square, to: Square): boolean => {
+   568→   568→      if (!interactive) return false;
+   569→   569→      const g = gameRef.current;
+   570→   570→      const candidates = g
+   571→   571→        .moves({ square: from, verbose: true })
+   572→   572→        .filter((m) => m.to === to);
+   573→   573→      if (candidates.length === 0) {
+   574→   574→        playSound("illegal");
+   575→   575→        return false;
+   576→   576→      }
+   577→   577→      if (candidates[0].promotion) {
+   578→   578→        if (autoQueen) {
+   579→   579→          return applyMove({ from, to, promotion: "q" });
+   580→   580→        }
+   581→   581→        setPendingPromotion({ from, to });
+   582→   582→        return true;
+   583→   583→      }
+   584→   584→      return applyMove({ from, to });
+   585→   585→    },
+   586→   586→    [interactive, autoQueen, applyMove]
+   587→   587→  );
+   588→   588→
+   589→   589→  const selectSquare = useCallback(
+   590→   590→    (square: Square | null) => {
+   591→   591→      if (!interactive) {
+   592→   592→        setSelected(null);
+   593→   593→        setLegalForSelected([]);
+   594→   594→        return;
+   595→   595→      }
+   596→   596→      if (square === null) {
+   597→   597→        setSelected(null);
+   598→   598→        setLegalForSelected([]);
+   599→   599→        return;
+   600→   600→      }
+   601→   601→      if (selected === square) {
+   602→   602→        setSelected(null);
+   603→   603→        setLegalForSelected([]);
+   604→   604→        return;
+   605→   605→      }
+   606→   606→      const g = gameRef.current;
+   607→   607→      const piece = g.get(square);
+   608→   608→      if (piece && piece.color === g.turn()) {
+   609→   609→        setSelected(square);
+   610→   610→        setLegalForSelected(g.moves({ square, verbose: true }));
+   611→   611→        playSound("select");
+   612→   612→        return;
+   613→   613→      }
+   614→   614→      // clicking a target square
+   615→   615→      if (selected && legalForSelected.some((m) => m.to === square)) {
+   616→   616→        attemptMove(selected, square);
+   617→   617→        return;
+   618→   618→      }
+   619→   619→      setSelected(null);
+   620→   620→      setLegalForSelected([]);
+   621→   621→    },
+   622→   622→    [interactive, selected, legalForSelected, attemptMove]
+   623→   623→  );
+   624→   624→
+   625→   625→  const promote = useCallback(
+   626→   626→    (piece: PromotionPiece) => {
+   627→   627→      if (!pendingPromotion) return;
+   628→   628→      applyMove({ from: pendingPromotion.from, to: pendingPromotion.to, promotion: piece });
+   629→   629→    },
+   630→   630→    [pendingPromotion, applyMove]
+   631→   631→  );
+   632→   632→
+   633→   633→  const cancelPromotion = useCallback(() => {
+   634→   634→    setPendingPromotion(null);
+   635→   635→    setSelected(null);
+   636→   636→    setLegalForSelected([]);
+   637→   637→  }, []);
+   638→   638→
+   639→   639→  // ---------- engine auto-play effect ----------
+   640→   640→  const engineTurnKey = `${fen}|${mode}|${status}|${viewIndex}|${difficulty}|${pendingPromotion ? 1 : 0}|${engineRetryTick}`;
+   641→   641→  const lastEngineTurnKey = useRef("");
+   642→   642→  useEffect(() => {
+   643→   643→    if (mode !== "ai" || status !== "active" || viewing || pendingPromotion) {
+   644→   644→      return;
+   645→   645→    }
+   646→   646→    if (gameRef.current.turn() !== engineColor) return;
+   647→   647→    if (lastEngineTurnKey.current === engineTurnKey) return;
+   648→   648→    const reqId = ++engineReqRef.current;
+   649→   649→    // Latch only when the request actually fires — if the user scrubs history
+   650→   650→    // during the scheduling window the cleanup below cancels the timer, the
+   651→   651→    // latch stays unset, and returning to Live reschedules cleanly.
+   652→   652→    const t = window.setTimeout(() => {
+   653→   653→      lastEngineTurnKey.current = engineTurnKey;
+   654→   654→      void requestEngineMove(reqId);
+   655→   655→    }, 240);
+   656→   656→    return () => window.clearTimeout(t);
+   657→   657→  }, [engineTurnKey]);
+   658→   658→
+   659→   659→  // ---------- clock ----------
+   660→   660→  useEffect(() => {
+   661→   661→    clockSideRef.current = turn;
+   662→   662→  }, [turn]);
+   663→   663→
+   664→   664→  useEffect(() => {
+   665→   665→    if (status !== "active" || activeTimeControl.initialMs === 0) return;
+   666→   666→    if (history.length === 0) return; // clock starts after the first move
+   667→   667→    let last = Date.now();
+   668→   668→    const iv = window.setInterval(() => {
+   669→   669→      const now = Date.now();
+   670→   670→      const dt = now - last;
+   671→   671→      last = now;
+   672→   672→      setClocks((prev) => {
+   673→   673→        const side = clockSideRef.current;
+   674→   674→        return { ...prev, [side]: Math.max(0, prev[side] - dt) };
+   675→   675→      });
+   676→   676→    }, 100);
+   677→   677→    return () => window.clearInterval(iv);
+   678→   678→  }, [status, activeTimeControl.initialMs, turn, fen]);
+   679→   679→
+   680→   680→  useEffect(() => {
+   681→   681→    if (status !== "active" || activeTimeControl.initialMs === 0) return;
+   682→   682→    if (clocks.w <= 0) endGame({ winner: "black", reason: "timeout" });
+   683→   683→    else if (clocks.b <= 0) endGame({ winner: "white", reason: "timeout" });
+   684→   684→  }, [clocks, status, activeTimeControl.initialMs, endGame]);
+   685→   685→
+   686→   686→  // ---------- actions ----------
+   687→   687→  const newGame = useCallback(
+   688→   688→    (opts?: {
+   689→   689→      mode?: GameMode;
+   690→   690→      difficulty?: Difficulty;
+   691→   691→      side?: Side | "random";
+   692→   692→      timeControlId?: string;
+   693→   693→    }) => {
+   694→   694→      engineReqRef.current++;
+   695→   695→      const nextMode = opts?.mode ?? mode;
+   696→   696→      const nextSide: Side =
+   697→   697→        opts?.side === "random"
+   698→   698→          ? Math.random() < 0.5
+   699→   699→            ? "white"
+   700→   700→            : "black"
+   701→   701→          : (opts?.side ?? preferredSide);
+   702→   702→      const tc =
+   703→   703→        TIME_CONTROLS.find((t) => t.id === opts?.timeControlId) ??
+   704→   704→        activeTimeControl;
+   705→   705→
+   706→   706→      gameRef.current = new Chess();
+   707→   707→      idRef.current++;
+   708→   708→      endedRef.current = false;
+   709→   709→      lastEngineTurnKey.current = "";
+   710→   710→      setMode(nextMode);
+   711→   711→      if (opts?.difficulty) setDifficulty(opts.difficulty);
+   712→   712→      if (opts?.side) setPreferredSide(nextSide === "white" ? "white" : "black");
+   713→   713→      setActiveTimeControl(tc);
+   714→   714→      setHumanColor(nextSide);
+   715→   715→      setOrientation(nextSide);
+   716→   716→      setFen(gameRef.current.fen());
+   717→   717→      setPieces(fenToPieces(gameRef.current.fen(), { spawn: true }));
+   718→   718→      setHistory([]);
+   719→   719→      setTurn("w");
+   720→   720→      setLastMove(null);
+   721→   721→      setInCheck(false);
+   722→   722→      setCheckedSquare(null);
+   723→   723→      setSelected(null);
+   724→   724→      setLegalForSelected([]);
+   725→   725→      setPendingPromotion(null);
+   726→   726→      setStatus("active");
+   727→   727→      setResult(null);
+   728→   728→      setDrawOfferPending(null);
+   729→   729→      setClocks({ w: tc.initialMs, b: tc.initialMs });
+   730→   730→      setThinking(false);
+   731→   731→      setEngineInfo(null);
+   732→   732→      setHint(null);
+   733→   733→      setHintsUsed(0);
+   734→   734→      setViewIndex(null);
+   735→   735→    },
+   736→   736→    [mode, preferredSide, activeTimeControl]
+   737→   737→  );
+   738→   738→
+   739→   739→  const undo = useCallback(() => {
+   740→   740→    engineReqRef.current++;
+   741→   741→    setThinking(false);
+   742→   742→    const g = gameRef.current;
+   743→   743→    if (g.history().length === 0) return;
+   744→   744→    if (mode === "ai" && g.turn() === charOf(humanColor) && g.history().length >= 2) {
+   745→   745→      g.undo(); // engine reply
+   746→   746→      g.undo(); // human move
+   747→   747→    } else {
+   748→   748→      g.undo();
+   749→   749→    }
+   750→   750→    setSelected(null);
+   751→   751→    setLegalForSelected([]);
+   752→   752→    setPendingPromotion(null);
+   753→   753→    setHint(null);
+   754→   754→    setViewIndex(null);
+   755→   755→    endedRef.current = false;
+   756→   756→    if (status === "ended") {
+   757→   757→      setStatus("active");
+   758→   758→      setResult(null);
+   759→   759→    }
+   760→   760→    lastEngineTurnKey.current = "";
+   761→   761→    refreshBoardState();
+   762→   762→    playSound("move");
+   763→   763→  }, [mode, humanColor, status, refreshBoardState]);
+   764→   764→
+   765→   765→  const resign = useCallback(() => {
+   766→   766→    if (status !== "active") return;
+   767→   767→    const loser: Side = mode === "ai" ? humanColor : sideOf(turn);
+   768→   768→    endGame({ winner: loser === "white" ? "black" : "white", reason: "resignation" });
+   769→   769→    toast(`${loser === "white" ? "White" : "Black"} resigned.`, {
+   770→   770→      description: "The crown changes hands.",
+   771→   771→    });
+   772→   772→  }, [status, mode, humanColor, turn, endGame]);
+   773→   773→
+   774→   774→  const offerDraw = useCallback(() => {
+   775→   775→    if (status !== "active") return;
+   776→   776→    if (mode === "human") {
+   777→   777→      setDrawOfferPending(turn);
+   778→   778→      return;
+   779→   779→    }
+   780→   780→    // AI decides: accepts only if clearly worse and past the opening
+   781→   781→    const evalCp = engineInfo?.evalCp ?? 0;
+   782→   782→    const aiIsWhite = engineColor === "w";
+   783→   783→    const aiEval = aiIsWhite ? evalCp : -evalCp;
+   784→   784→    if (aiEval < -180 && history.length >= 24) {
+   785→   785→      endGame({ winner: null, reason: "agreement" });
+   786→   786→      toast("Draw agreed", { description: "The Grandmaster accepts your offer." });
+   787→   787→    } else {
+   788→   788→      toast("Draw declined", {
+   789→   789→        description: "The Grandmaster smells blood and plays on.",
+   790→   790→      });
+   791→   791→    }
+   792→   792→  }, [status, mode, turn, engineInfo, engineColor, history.length, endGame]);
+   793→   793→
+   794→   794→  const resolveDrawOffer = useCallback(
+   795→   795→    (accept: boolean) => {
+   796→   796→      setDrawOfferPending(null);
+   797→   797→      if (accept) endGame({ winner: null, reason: "agreement" });
+   798→   798→    },
+   799→   799→    [endGame]
+   800→   800→  );
+   801→   801→
+   802→   802→  const requestHint = useCallback(async () => {
+   803→   803→    if (status !== "active" || thinking || !isHumanTurn) return;
+   804→   804→    if (hintsUsed >= 3) {
+   805→   805→      toast("No hints left", {
+   806→   806→        description: "Three whispers per game — the rest is destiny.",
+   807→   807→      });
+   808→   808→      return;
+   809→   809→    }
+   810→   810→    setHintsUsed((h) => h + 1);
+   811→   811→    setThinking(true);
+   812→   812→    try {
+   813→   813→      const res = await fetch("/api/engine", {
+   814→   814→        method: "POST",
+   815→   815→        headers: { "Content-Type": "application/json" },
+   816→   816→        body: JSON.stringify({ fen: gameRef.current.fen(), level: "hard" }),
+   817→   817→      });
+   818→   818→      if (!res.ok) throw new Error();
+   819→   819→      const data = (await res.json()) as { from: Square; to: Square };
+   820→   820→      setHint({ from: data.from, to: data.to });
+   821→   821→      setSelected(null);
+   822→   822→      setLegalForSelected([]);
+   823→   823→      window.setTimeout(() => setHint((h) => (h?.from === data.from && h?.to === data.to ? null : h)), 2600);
+   824→   824→    } catch {
+   825→   825→      toast.error("Hint unavailable right now.");
+   826→   826→    } finally {
+   827→   827→      setThinking(false);
+   828→   828→    }
+   829→   829→  }, [status, thinking, isHumanTurn, hintsUsed]);
+   830→   830→
+   831→   831→  const flipBoard = useCallback(() => {
+   832→   832→    setOrientation((o) => (o === "white" ? "black" : "white"));
+   833→   833→  }, []);
+   834→   834→
+   835→   835→  const goToHistory = useCallback((index: number | null) => {
+   836→   836→    setViewIndex(index);
+   837→   837→    setSelected(null);
+   838→   838→    setLegalForSelected([]);
+   839→   839→  }, []);
+   840→   840→
+   841→   841→  const primeAudioOnGesture = useCallback(() => {
+   842→   842→    primeAudio();
+   843→   843→  }, []);
+   844→   844→
+   845→   845→  return {
+   846→   846→    // state
+   847→   847→    fen,
+   848→   848→    pieces: displayPieces,
+   849→   849→    livePieces: pieces,
+   850→   850→    history,
+   851→   851→    turn,
+   852→   852→    lastMove,
+   853→   853→    inCheck,
+   854→   854→    checkedSquare,
+   855→   855→    selected,
+   856→   856→    legalForSelected,
+   857→   857→    pendingPromotion,
+   858→   858→    status,
+   859→   859→    result,
+   860→   860→    orientation,
+   861→   861→    humanColor,
+   862→   862→    engineColor: sideOf(engineColor),
+   863→   863→    mode,
+   864→   864→    difficulty,
+   865→   865→    soundOn,
+   866→   866→    showLegal,
+   867→   867→    showCoords,
+   868→   868→    autoQueen,
+   869→   869→    preferredSide,
+   870→   870→    clocks,
+   871→   871→    activeTimeControl,
+   872→   872→    thinking,
+   873→   873→    engineInfo,
+   874→   874→    hint,
+   875→   875→    hintsUsed,
+   876→   876→    viewIndex,
+   877→   877→    viewing,
+   878→   878→    interactive,
+   879→   879→    started,
+   880→   880→    stats,
+   881→   881→    drawOfferPending,
+   882→   882→    capturedBy,
+   883→   883→    // actions
+   884→   884→    selectSquare,
+   885→   885→    attemptMove,
+   886→   886→    promote,
+   887→   887→    cancelPromotion,
+   888→   888→    newGame,
+   889→   889→    undo,
+   890→   890→    resign,
+   891→   891→    offerDraw,
+   892→   892→    resolveDrawOffer,
+   893→   893→    requestHint,
+   894→   894→    flipBoard,
+   895→   895→    goToHistory,
+   896→   896→    setSoundOn,
+   897→   897→    setShowLegal,
+   898→   898→    setShowCoords,
+   899→   899→    setAutoQueen,
+   900→   900→    setMode,
+   901→   901→    setDifficulty,
+   902→   902→    setPreferredSide,
+   903→   903→    primeAudioOnGesture,
+   904→   904→  };
+   905→   905→}
+   906→   906→
+   907→   907→export type ChessGame = ReturnType<typeof useChessGame>;
+   908→   908→

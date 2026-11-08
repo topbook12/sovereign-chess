@@ -43,6 +43,8 @@ interface ChessBoardProps {
   showCoords: boolean;
   pendingPromotion: { from: Square; to: Square } | null;
   promotionColor: Color;
+  /** allow selecting pieces of EITHER color (free analysis board) */
+  bothSides?: boolean;
   onSelect: (square: Square | null) => void;
   onMoveAttempt: (from: Square, to: Square) => boolean;
   onPromote: (piece: PromotionPiece) => void;
@@ -74,6 +76,7 @@ export function ChessBoard({
   showCoords,
   pendingPromotion,
   promotionColor,
+  bothSides = false,
   onSelect,
   onMoveAttempt,
   onPromote,
@@ -134,7 +137,8 @@ export function ChessBoard({
       const square = squareFromEvent(e.clientX, e.clientY);
       if (!square) return;
       const piece = pieceAt(square);
-      const selectable = piece && piece.color === turnColor;
+      const selectable =
+        piece && (bothSides || piece.color === turnColor);
       interactionRef.current = {
         square,
         startX: e.clientX,
@@ -150,7 +154,7 @@ export function ChessBoard({
         /* noop */
       }
     },
-    [interactive, squareFromEvent, pieceAt, turnColor, onFirstGesture]
+    [interactive, squareFromEvent, pieceAt, turnColor, bothSides, onFirstGesture]
   );
 
   const handlePointerMove = useCallback(
@@ -196,7 +200,7 @@ export function ChessBoard({
   const handleClick = useCallback(
     (square: Square) => {
       const piece = pieceAt(square);
-      if (piece && piece.color === turnColor) {
+      if (piece && (bothSides || piece.color === turnColor)) {
         onSelect(square); // toggles if same
         return;
       }
@@ -206,7 +210,7 @@ export function ChessBoard({
       }
       onSelect(null);
     },
-    [pieceAt, turnColor, onSelect, selected, targetSet, onMoveAttempt]
+    [pieceAt, turnColor, bothSides, onSelect, selected, targetSet, onMoveAttempt]
   );
 
   const handlePointerUp = useCallback(
@@ -406,7 +410,7 @@ export function ChessBoard({
                   !isDragging &&
                     !p.captured &&
                     interactive &&
-                    p.color === turnColor &&
+                    (bothSides || p.color === turnColor) &&
                     "piece-hoverable"
                 )}
                 style={p.spawn ? { animationDelay: `${p.spawnDelay ?? 0}ms` } : undefined}

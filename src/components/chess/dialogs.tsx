@@ -246,10 +246,12 @@ export function GameOverDialog({
   open,
   onOpenChange,
   game,
+  onAnalyze,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   game: ChessGame;
+  onAnalyze?: () => void;
 }) {
   const { result, mode, humanColor } = game;
   if (!result) return null;
@@ -330,6 +332,18 @@ export function GameOverDialog({
             <RotateCcw className="mr-2 h-4 w-4" />
             Rematch
           </Button>
+          {onAnalyze && (
+            <Button
+              onClick={() => {
+                onOpenChange(false);
+                onAnalyze();
+              }}
+              className="h-11 border border-emerald-400/40 bg-emerald-400/15 font-bold text-emerald-200 hover:bg-emerald-400/25"
+            >
+              <Sparkles className="mr-2 h-4 w-4" />
+              Analyze with the Oracle
+            </Button>
+          )}
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}

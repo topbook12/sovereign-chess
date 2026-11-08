@@ -79,6 +79,59 @@ function bookMove(fen: string): string | null {
   return entries[0][0];
 }
 
+/**
+ * Static evaluation of a position: best move + white-POV eval, without the
+ * opening book (used by the analysis tools, where a clean number matters).
+ * Handles terminal positions (mate / draw) gracefully.
+ */
+export function evaluateFen(
+  fen: string,
+  level: EngineLevel = "medium"
+): {
+  evalCp: number;
+  mateIn?: number;
+  from?: string;
+  to?: string;
+  promotion?: string;
+  san?: string;
+} {
+  const game = new Chess(fen);
+
+  if (game.isGameOver()) {
+    if (game.isCheckmate()) {
+      const whiteMated = game.turn() === "w";
+      return { evalCp: whiteMated ? -MATE : MATE, mateIn: 0 };
+    }
+    return { evalCp: 0 }; // stalemate / insufficient material / draw rules
+  }
+
+  const core = searchBestMove(fen, level);
+  if (!core || !Number.isFinite(core.scoreCp)) return { evalCp: 0 };
+
+  const whiteToMove = game.turn() === "w";
+  const raw = Math.max(-MATE, Math.min(MATE, core.scoreCp));
+  const evalCp = whiteToMove ? raw : -raw;
+  const mateIn =
+    Math.abs(core.scoreCp) > MATE - 1000
+      ? Math.max(1, Math.ceil((MATE - Math.abs(core.scoreCp)) / 2))
+      : undefined;
+
+  // cross-check legality through chess.js
+  const legal = game.moves({ verbose: true }).find(
+    (m) => m.from === core.from && m.to === core.to && (!core.promotion || m.promotion === core.promotion)
+  );
+  if (!legal) return { evalCp };
+
+  return {
+    evalCp,
+    mateIn,
+    from: legal.from,
+    to: legal.to,
+    promotion: legal.promotion,
+    san: legal.san,
+  };
+}
+
 export function findBestMove(fen: string, level: EngineLevel = "medium"): EngineResult | null {
   const game = new Chess(fen);
   const legal = game.moves({ verbose: true });

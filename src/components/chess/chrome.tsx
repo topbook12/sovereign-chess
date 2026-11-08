@@ -1,6 +1,17 @@
 "use client";
 
-import { Bot, Crown, Info, ScrollText, ShieldCheck, Volume2, VolumeX } from "lucide-react";
+import {
+  BookOpen,
+  Bot,
+  ChartLine,
+  Crown,
+  Info,
+  ScrollText,
+  ShieldCheck,
+  Swords,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -9,6 +20,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { ChessGame } from "@/hooks/use-chess-game";
+import type { AppTab } from "@/components/chess/bottom-nav";
 import { cn } from "@/lib/utils";
 
 /* ---------------- Aurora background ---------------- */
@@ -27,12 +39,22 @@ export function AuroraBackground() {
 
 /* ---------------- Header ---------------- */
 
+const NAV_ITEMS: { id: AppTab; label: string; icon: React.ReactNode }[] = [
+  { id: "play", label: "Play", icon: <Swords className="h-3.5 w-3.5" /> },
+  { id: "analyze", label: "Analyze", icon: <ChartLine className="h-3.5 w-3.5" /> },
+  { id: "learn", label: "Learn", icon: <BookOpen className="h-3.5 w-3.5" /> },
+];
+
 export function Header({
   game,
+  tab,
+  onTab,
   onNewGame,
   onRules,
 }: {
   game: ChessGame;
+  tab: AppTab;
+  onTab: (t: AppTab) => void;
   onNewGame: () => void;
   onRules: () => void;
 }) {
@@ -47,14 +69,38 @@ export function Header({
             <h1 className="font-display text-xl font-black tracking-[0.18em] text-gold-gradient sm:text-2xl">
               SOVEREIGN
             </h1>
-            <p className="mt-1 text-[9.5px] font-semibold uppercase tracking-[0.42em] text-foreground/40">
-              Royale Chess
+            <p className="mt-1 hidden text-[9.5px] font-semibold uppercase tracking-[0.42em] text-foreground/40 sm:block">
+              Play · Analyze · Master
             </p>
           </div>
         </div>
 
+        {/* desktop room tabs */}
+        <nav
+          aria-label="Rooms"
+          className="hidden items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] p-1 md:flex"
+        >
+          {NAV_ITEMS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onTab(t.id)}
+              aria-current={tab === t.id ? "page" : undefined}
+              className={cn(
+                "flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[12.5px] font-bold uppercase tracking-[0.12em] transition-all",
+                tab === t.id
+                  ? "border border-[#8a6a24]/50 bg-gradient-to-b from-[#ecca6f] to-[#c69c3f] text-[#241a05] shadow-[0_0_18px_-6px_rgba(212,175,55,0.8)]"
+                  : "text-foreground/55 hover:text-foreground"
+              )}
+            >
+              {t.icon}
+              {t.label}
+            </button>
+          ))}
+        </nav>
+
         <div className="flex items-center gap-2">
-          {game.mode === "ai" && (
+          {game.mode === "ai" && tab === "play" && (
             <div
               className="hidden items-center gap-2.5 rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs sm:flex"
               aria-label="Your record against the engine"
@@ -106,17 +152,19 @@ export function Header({
                   <ScrollText className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Rules & features</TooltipContent>
+              <TooltipContent>Rules &amp; features</TooltipContent>
             </Tooltip>
 
-            <Button
-              onClick={onNewGame}
-              className="h-9 border border-[#8a6a24]/50 bg-gradient-to-b from-[#ecca6f] to-[#c69c3f] px-3.5 text-[13px] font-semibold text-[#241a05] hover:from-[#f3d887] hover:to-[#d4a94e]"
-            >
-              <Info className="mr-1 h-3.5 w-3.5 sm:hidden" />
-              <span className="hidden sm:inline">New Game</span>
-              <span className="sm:hidden">New</span>
-            </Button>
+            {tab === "play" && (
+              <Button
+                onClick={onNewGame}
+                aria-label="New game"
+                className="h-9 border border-[#8a6a24]/50 bg-gradient-to-b from-[#ecca6f] to-[#c69c3f] px-2.5 text-[13px] font-semibold text-[#241a05] hover:from-[#f3d887] hover:to-[#d4a94e] sm:px-3.5"
+              >
+                <Info className="h-4 w-4 sm:mr-1" />
+                <span className="hidden sm:inline">New Game</span>
+              </Button>
+            )}
           </TooltipProvider>
         </div>
       </div>

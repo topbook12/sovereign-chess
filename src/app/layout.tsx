@@ -22,17 +22,27 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  title: "Sovereign — Royale Chess Experience",
+  title: "Sovereign — Play, Analyze & Master Chess",
   description:
-    "A premium, advanced chess experience: full rules, a ruthless AI engine, silky drag & drop, live evaluation and a royal emerald & gold aesthetic.",
-  keywords: ["chess", "chess game", "AI chess", "premium chess", "play chess online"],
+    "The world's most premium chess learning platform: full-rules play against a ruthless AI, grandmaster-style game reports with move classification & accuracy, tactics puzzles, endgame drills and interactive opening lessons — in a royal emerald & gold arena.",
+  keywords: [
+    "chess",
+    "chess game",
+    "AI chess",
+    "premium chess",
+    "chess analysis",
+    "chess puzzles",
+    "learn chess",
+    "play chess online",
+  ],
   authors: [{ name: "Sovereign Chess" }],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },
   openGraph: {
-    title: "Sovereign — Royale Chess Experience",
-    description: "Play a ruthless chess AI in a royal emerald & gold arena.",
+    title: "Sovereign — Play, Analyze & Master Chess",
+    description:
+      "Play a ruthless chess AI, decode your games with grandmaster-grade reports, and train with puzzles, drills and openings.",
     siteName: "Sovereign Chess",
     type: "website",
   },
