@@ -3,8 +3,13 @@
  * the student profile v2 (XP, ELO rating, crowns, streaks, achievements),
  * plus the recent-games archive for the analysis room.
  * The local profile is the live source of truth; it is mirrored to the
- * database via /api/profile so progress survives cleared browsers.
+ * cloud (Turso, with a local SQLite fallback) via /api/profile, and every
+ * finished duel is archived to the compact PGN cloud table through a
+ * persistent retry queue — so progress survives cleared browsers and the
+ * data can never be lost, even during outages.
  */
+
+import { markProfileSync, queueGame } from "./cloud";
 
 export interface StoredGame {
   id: string;
@@ -118,6 +123,15 @@ export function saveRecentGame(
   };
   const all = [entry, ...loadRecentGames()].slice(0, 30);
   writeJSON(GAMES_KEY, all);
+  // mirror the duel to the compact cloud archive (fire-and-forget, idempotent)
+  queueGame({
+    cid: entry.id,
+    pgn: entry.pgn,
+    result: entry.result,
+    label: entry.label,
+    plies: entry.plies,
+    ts: entry.date,
+  });
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event(PROFILE_EVENT));
   }
@@ -208,12 +222,14 @@ async function pushCloudProfile() {
   syncing = true;
   try {
     const data = JSON.stringify(loadProfile());
-    await fetch("/api/profile", {
+    const res = await fetch("/api/profile", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ deviceId: deviceId(), data }),
     });
+    markProfileSync(res.ok);
   } catch {
+    markProfileSync(false);
     /* offline — the local profile remains the source of truth */
   } finally {
     syncing = false;

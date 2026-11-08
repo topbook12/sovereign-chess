@@ -15,10 +15,13 @@ import { playSound } from "@/lib/sounds";
 import { fenToPieces } from "@/lib/chess-utils";
 import {
   buildReport,
-  fetchEvals,
   type EvalPoint,
   type GameReport,
 } from "@/lib/analysis-client";
+import {
+  bridgeEvaluate,
+  bridgeEvaluateBatch,
+} from "@/lib/engine-bridge";
 import {
   deleteRecentGame,
   loadRecentGames,
@@ -117,12 +120,15 @@ export function useAnalysis(initialGameId?: string | null) {
   useEffect(() => {
     if (loadedInitialRef.current) return;
     loadedInitialRef.current = true;
-    const games = loadRecentGames();
-    setRecentGames(games);
-    if (initialGameId) {
-      const g = games.find((x) => x.id === initialGameId);
-      if (g) loadStoredGameRef.current(g);
-    }
+    const id = window.setTimeout(() => {
+      const games = loadRecentGames();
+      setRecentGames(games);
+      if (initialGameId) {
+        const g = games.find((x) => x.id === initialGameId);
+        if (g) loadStoredGameRef.current(g);
+      }
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [initialGameId]);
 
   /* ------------------------------------------------ derived (display) */
@@ -159,45 +165,36 @@ export function useAnalysis(initialGameId?: string | null) {
   /* ------------------------------------------------ live eval */
 
   useEffect(() => {
-    if (coveredEval) {
-      setLiveEval(coveredEval);
-      return;
-    }
     let cancelled = false;
-    setLiveEval(null);
-    const t = window.setTimeout(async () => {
-      const cached = evalCacheRef.current.get(viewFen);
-      if (cached) {
-        if (!cancelled) setLiveEval(cached);
-        return;
-      }
-      try {
-        const res = await fetch("/api/engine/eval", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fen: viewFen, level: "medium" }),
-        });
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          evalCp: number;
-          mateIn?: number;
-          from?: string;
-          to?: string;
-          san?: string;
-        };
-        const point: EvalPoint = {
-          cp: data.evalCp,
-          mateIn: data.mateIn,
-          bestFrom: data.from,
-          bestTo: data.to,
-          bestSan: data.san,
-        };
-        evalCacheRef.current.set(viewFen, point);
-        if (!cancelled) setLiveEval(point);
-      } catch {
-        /* silent — live eval is best-effort */
-      }
-    }, 400);
+    const t = window.setTimeout(
+      async () => {
+        if (coveredEval) {
+          setLiveEval(coveredEval);
+          return;
+        }
+        setLiveEval(null);
+        const cached = evalCacheRef.current.get(viewFen);
+        if (cached) {
+          if (!cancelled) setLiveEval(cached);
+          return;
+        }
+        try {
+          const data = await bridgeEvaluate(viewFen, "medium");
+          const point: EvalPoint = {
+            cp: data.evalCp,
+            mateIn: data.mateIn,
+            bestFrom: data.from,
+            bestTo: data.to,
+            bestSan: data.san,
+          };
+          evalCacheRef.current.set(viewFen, point);
+          if (!cancelled) setLiveEval(point);
+        } catch {
+          /* silent — live eval is best-effort */
+        }
+      },
+      coveredEval ? 0 : 400
+    );
     return () => {
       cancelled = true;
       window.clearTimeout(t);
@@ -343,35 +340,40 @@ export function useAnalysis(initialGameId?: string | null) {
 
     try {
       const cached = fens.map((f) => evalCacheRef.current.get(f));
-      let done = cached.filter(Boolean).length;
       const points: (EvalPoint | undefined)[] = [...cached];
-      setProgress({ done, total: fens.length });
+      setProgress({ done: cached.filter(Boolean).length, total: fens.length });
 
       const missing: { fen: string; idx: number }[] = [];
       fens.forEach((f, idx) => {
         if (!cached[idx]) missing.push({ fen: f, idx });
       });
 
-      const CHUNK = 8;
-      for (let i = 0; i < missing.length; i += CHUNK) {
-        const slice = missing.slice(i, i + CHUNK);
-        const res = await fetch("/api/analysis", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fens: slice.map((s) => s.fen) }),
-          signal: ac.signal,
-        });
-        if (!res.ok) throw new Error(String(res.status));
-        const data = (await res.json()) as { results: EvalPoint[] };
-        data.results.forEach((r, j) => {
-          const idx = slice[j].idx;
-          points[idx] = r;
-          evalCacheRef.current.set(slice[j].fen, r);
-        });
-        done += slice.length;
-        setProgress({ done: Math.min(done, fens.length), total: fens.length });
-        setEvals([...points]);
-      }
+      const base = cached.filter(Boolean).length;
+      const results = await bridgeEvaluateBatch(
+        missing.map((m) => m.fen),
+        "medium",
+        (batchDone) => {
+          setProgress({
+            done: Math.min(base + batchDone, fens.length),
+            total: fens.length,
+          });
+        },
+        ac.signal
+      );
+      results.forEach((r, j) => {
+        const idx = missing[j].idx;
+        const point: EvalPoint = {
+          cp: r.evalCp,
+          mateIn: r.mateIn,
+          bestFrom: r.from,
+          bestTo: r.to,
+          bestSan: r.san,
+        };
+        points[idx] = point;
+        evalCacheRef.current.set(missing[j].fen, point);
+      });
+      setProgress({ done: fens.length, total: fens.length });
+      setEvals([...points]);
 
       const filled = points.map((p) => p ?? { cp: 0 });
       const terminalMate = chessRef.current.isCheckmate();

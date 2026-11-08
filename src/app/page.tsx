@@ -20,7 +20,8 @@ import {
 } from "@/components/chess/dialogs";
 import { AuroraBackground, Footer, Header } from "@/components/chess/chrome";
 import { BottomNav, type AppTab } from "@/components/chess/bottom-nav";
-import { type StoredGame } from "@/lib/game-store";
+import { type StoredGame, loadRecentGames } from "@/lib/game-store";
+import { fetchCloudGameCount, flushQueue } from "@/lib/cloud";
 import { serializeGame } from "@/lib/chess-utils";
 import { setPlatformTotals } from "@/lib/career";
 import { PUZZLES, OPENINGS } from "@/lib/puzzles";
@@ -37,6 +38,16 @@ export default function Home() {
   const [pendingGame, setPendingGame] = useState<StoredGame | null>(null);
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
   const archiveRef = useRef<Map<string, StoredGame>>(new Map());
+
+  // cloud boot — drain any queued games + refresh the archive counter once,
+  // after the page has painted (fire-and-forget; the app never depends on it)
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      void flushQueue();
+      void fetchCloudGameCount();
+    }, 2600);
+    return () => window.clearTimeout(t);
+  }, []);
 
   const resultKey = game.result
     ? `${game.result.reason}-${game.result.winner ?? "none"}-${game.history.length}`
@@ -106,7 +117,16 @@ export default function Home() {
 
         {/* ---------------- career room ---------------- */}
         <div className={cn(tab !== "career" && "hidden")}>
-          <CareerView onGoAnalyze={() => setTab("analyze")} />
+          <CareerView
+            onGoAnalyze={(gameId) => {
+              // hand the chosen duel straight to the oracle
+              const stored = gameId
+                ? loadRecentGames().find((x) => x.id === gameId) ?? null
+                : null;
+              if (stored) setPendingGame(stored);
+              setTab("analyze");
+            }}
+          />
         </div>
       </main>
 

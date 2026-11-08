@@ -77,31 +77,24 @@ function emptyCounts(): Record<MoveClass, number> {
 /* batched evaluation                                                  */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Delegates to the device-side engine bridge (zero server cost). Kept as
+ * a stable public entry point for older consumers.
+ */
 export async function fetchEvals(
   fens: string[],
   onProgress?: (done: number, total: number) => void,
   signal?: AbortSignal
 ): Promise<EvalPoint[]> {
-  const CHUNK = 8;
-  const out: EvalPoint[] = new Array(fens.length);
-  let done = 0;
-  for (let i = 0; i < fens.length; i += CHUNK) {
-    const slice = fens.slice(i, i + CHUNK);
-    const res = await fetch("/api/analysis", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fens: slice }),
-      signal,
-    });
-    if (!res.ok) throw new Error(`Analysis failed (${res.status})`);
-    const data = (await res.json()) as { results: EvalPoint[] };
-    data.results.forEach((r, j) => {
-      out[i + j] = r;
-    });
-    done += slice.length;
-    onProgress?.(Math.min(done, fens.length), fens.length);
-  }
-  return out;
+  const { bridgeEvaluateBatch } = await import("./engine-bridge");
+  const raw = await bridgeEvaluateBatch(fens, "medium", onProgress, signal);
+  return raw.map((r) => ({
+    cp: r.evalCp,
+    mateIn: r.mateIn,
+    bestSan: r.san,
+    bestFrom: r.from,
+    bestTo: r.to,
+  }));
 }
 
 /* ------------------------------------------------------------------ */

@@ -39,6 +39,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useCareer } from "@/hooks/use-career";
+import { DataVault } from "@/components/chess/data-vault";
 import { ACHIEVEMENTS, dateKey } from "@/lib/career";
 import {
   PROFILE_EVENT,
@@ -357,7 +358,11 @@ function timeAgo(ts: number): string {
 /* main view                                                        */
 /* ================================================================ */
 
-export function CareerView({ onGoAnalyze }: { onGoAnalyze?: () => void }) {
+export function CareerView({
+  onGoAnalyze,
+}: {
+  onGoAnalyze?: (gameId?: string) => void;
+}) {
   const career = useCareer();
   const lvl = levelFromXp(career.xp);
   const trainedToday = career.lastActiveDate === dateKey();
@@ -674,6 +679,9 @@ export function CareerView({ onGoAnalyze }: { onGoAnalyze?: () => void }) {
         </FloatIn>
       </section>
 
+      {/* ======================= data vault ======================= */}
+      <DataVault />
+
       {/* ===================== recent arena games ===================== */}
       <section aria-label="Recent arena games">
         <FloatIn delay={0.24} className="glass-panel rounded-2xl p-4 sm:p-5">
@@ -721,7 +729,7 @@ export function CareerView({ onGoAnalyze }: { onGoAnalyze?: () => void }) {
                   </span>
                   <Button
                     type="button"
-                    onClick={onGoAnalyze}
+                    onClick={() => onGoAnalyze?.(g.id)}
                     aria-label={`Analyze ${g.label}`}
                     className="h-11 shrink-0 border border-[#8a6a24]/50 bg-gradient-to-b from-[#ecca6f] to-[#c69c3f] px-3.5 text-xs font-semibold text-[#241a05] hover:from-[#f3d887] hover:to-[#d4a94e]"
                   >

@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chess, type Move, type Square } from "chess.js";
 import { playSound } from "@/lib/sounds";
+import { bridgeBestMove } from "@/lib/engine-bridge";
 import { fenToPieces } from "@/lib/chess-utils";
 import { loadProfile, type LearningProfile } from "@/lib/game-store";
 import { awardDrill } from "@/lib/career";
@@ -120,13 +121,8 @@ export function useDrill() {
       if (g.isGameOver()) return;
       setThinking(true);
       try {
-        const res = await fetch("/api/engine", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fen: g.fen(), level: "medium" }),
-        });
-        if (!res.ok) throw new Error(String(res.status));
-        const data = (await res.json()) as { from: Square; to: Square; promotion?: string };
+        const data = await bridgeBestMove(g.fen(), "medium");
+        if (!data) throw new Error("engine unavailable");
         if (reqId !== reqIdRef.current) return;
         const played = g.move({
           from: data.from,

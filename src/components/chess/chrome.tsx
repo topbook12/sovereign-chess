@@ -16,6 +16,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CloudDot } from "@/components/chess/data-vault";
 import {
   Tooltip,
   TooltipContent,
@@ -337,15 +338,16 @@ export function Footer() {
           <span className="hidden sm:inline">— crafted for connoisseurs of the royal game.</span>
         </span>
         <span className="flex items-center gap-3">
-          <span className="flex items-center gap-1.5">
+          <CloudDot />
+          <span className="hidden sm:flex sm:items-center sm:gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400/80" />
-            Alpha–Beta Oracle
+            Device-Side Oracle
           </span>
-          <span className="flex items-center gap-1.5">
+          <span className="hidden md:flex md:items-center md:gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-gold/80" />
             Fischer Clocks
           </span>
-          <span className="flex items-center gap-1.5">
+          <span className="hidden lg:flex lg:items-center lg:gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-red-400/70" />
             Regulation Rules
           </span>

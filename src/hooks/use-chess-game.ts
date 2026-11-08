@@ -9,6 +9,7 @@ import {
   type PieceSymbol,
 } from "chess.js";
 import { playSound, primeAudio, setSoundEnabled } from "@/lib/sounds";
+import { bridgeBestMove } from "@/lib/engine-bridge";
 import { awardGame, spendCrowns, HINT_COST } from "@/lib/career";
 import { toast } from "sonner";
 
@@ -420,23 +421,9 @@ export function useChessGame() {
       setThinking(true);
       const t0 = Date.now();
       try {
-        const res = await fetch("/api/engine", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fen: g.fen(), level: difficulty }),
-        });
-        if (!res.ok) throw new Error(`Engine error ${res.status}`);
-        const data = (await res.json()) as {
-          from: Square;
-          to: Square;
-          promotion?: string;
-          san: string;
-          evalCp: number;
-          mateIn?: number;
-          depth: number;
-          nodes: number;
-          timeMs: number;
-        };
+        // device-side oracle (zero server cost) with automatic server fallback
+        const data = await bridgeBestMove(g.fen(), difficulty);
+        if (!data) throw new Error("Engine unavailable");
         if (
           reqId !== engineReqRef.current ||
           status !== "active" ||
@@ -841,13 +828,8 @@ export function useChessGame() {
     setHintsUsed((h) => h + 1);
     setThinking(true);
     try {
-      const res = await fetch("/api/engine", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fen: gameRef.current.fen(), level: "hard" }),
-      });
-      if (!res.ok) throw new Error();
-      const data = (await res.json()) as { from: Square; to: Square };
+      const data = await bridgeBestMove(gameRef.current.fen(), "hard");
+      if (!data) throw new Error();
       setHint({ from: data.from, to: data.to });
       setSelected(null);
       setLegalForSelected([]);

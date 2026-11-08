@@ -52,3 +52,14 @@ prompt
 server.log
 # Skills directory
 /skills/
+# sovereign: local artifacts never shipped to the repo
+dev.log
+server.log
+tool-results/
+shots/
+agent-ctx/
+db/*.db
+*.sqlite3
+/step*.png
+/sel-*.png
+.zscripts/
