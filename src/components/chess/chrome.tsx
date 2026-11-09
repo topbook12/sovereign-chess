@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CloudDot } from "@/components/chess/data-vault";
+import { InstallButton } from "@/components/pwa/install-button";
 import {
   Tooltip,
   TooltipContent,
@@ -203,6 +204,8 @@ export function Header({
           )}
 
           <TooltipProvider delayDuration={250}>
+            <InstallButton />
+
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

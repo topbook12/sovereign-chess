@@ -49,6 +49,15 @@ export default function Home() {
     return () => window.clearTimeout(t);
   }, []);
 
+  // PWA shortcut / notification deep links — "/?tab=analyze" opens the oracle
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    if (t === "play" || t === "learn" || t === "analyze" || t === "career") {
+      const r = requestAnimationFrame(() => setTab(t));
+      return () => cancelAnimationFrame(r);
+    }
+  }, []);
+
   const resultKey = game.result
     ? `${game.result.reason}-${game.result.winner ?? "none"}-${game.history.length}`
     : null;

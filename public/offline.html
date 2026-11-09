@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Sovereign — Offline</title>
+  <meta name="theme-color" content="#0a0b0e" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      display: flex; align-items: center; justify-content: center;
+      background:
+        radial-gradient(60% 50% at 50% 30%, rgba(35, 84, 58, 0.35), transparent 70%),
+        linear-gradient(160deg, #10160f 0%, #0a0b0e 55%, #050607 100%);
+      color: #e8e4d8;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      padding: 24px; text-align: center;
+      -webkit-user-select: none; user-select: none;
+    }
+    .shell { max-width: 420px; }
+    .crown { width: 84px; height: 84px; margin: 0 auto 22px;
+      filter: drop-shadow(0 0 22px rgba(212, 175, 55, 0.45)); }
+    h1 {
+      font-size: 26px; font-weight: 800; letter-spacing: 0.14em;
+      background: linear-gradient(180deg, #fbeab5 10%, #d4a94e 60%, #a9832f 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      text-transform: uppercase;
+    }
+    p { margin-top: 12px; font-size: 14px; line-height: 1.7; color: rgba(232, 228, 216, 0.62); }
+    .pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      margin-top: 18px; padding: 8px 16px;
+      border: 1px solid rgba(212, 175, 55, 0.35); border-radius: 999px;
+      background: rgba(212, 175, 55, 0.08);
+      font-size: 12px; letter-spacing: 0.08em; color: #d9b45c;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #f87171;
+      box-shadow: 0 0 10px rgba(248, 113, 113, 0.8); animation: pulse 1.6s infinite; }
+    @keyframes pulse { 50% { opacity: 0.35; } }
+    button {
+      margin-top: 26px; padding: 12px 30px; border: none; border-radius: 999px;
+      font-size: 14px; font-weight: 700; letter-spacing: 0.06em; cursor: pointer;
+      background: linear-gradient(180deg, #ecca6f, #c69c3f); color: #241a05;
+      box-shadow: 0 10px 30px -10px rgba(212, 175, 55, 0.8);
+      transition: transform 0.15s ease;
+    }
+    button:active { transform: scale(0.97); }
+    small { display: block; margin-top: 20px; font-size: 11px; color: rgba(232, 228, 216, 0.35); }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <svg class="crown" viewBox="0 0 24 24" fill="none" stroke="#e2b95e" stroke-width="1.6"
+      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z"/>
+      <path d="M5 20h14"/>
+    </svg>
+    <h1>Sovereign</h1>
+    <p>The connection to the kingdom has been severed — but your games, rating
+      and progress rest safely on this device.</p>
+    <span class="pill"><span class="dot"></span> OFFLINE — RETRYING SOON</span>
+    <br />
+    <button onclick="location.reload()">Re-enter the Arena</button>
+    <small>Everything is stored on-device. Nothing was lost.</small>
+  </main>
+  <script>
+    // auto-retry gently while offline
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries++;
+      if (navigator.onLine || tries > 20) clearInterval(timer);
+    }, 3000);
+    window.addEventListener("online", function () { location.reload(); });
+  </script>
+</body>
+</html>
