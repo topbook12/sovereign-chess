@@ -1,24 +1,20 @@
 /**
- * Sovereign Chess — Service Worker.
+ * Sovereign Chess — Service Worker (v1.1).
  *
  * Hand-rolled, zero dependencies, cost-effective by design:
  *  - everything is cached on the DEVICE, so repeat visits cost the
  *    server (Vercel) almost nothing and the arena works offline;
  *  - navigations are network-first, so users always get the freshest
  *    build when online, with an instant cached/offline fallback when not;
- *  - immutable hashed assets and icons are cache-first (they never change);
+ *  - static assets use stale-while-revalidate — instant from cache and
+ *    self-healing in the background (chunk names are content-hashed);
  *  - API routes are NEVER cached — user data lives on-device first.
- *
- * The `?prod=1` query (added by the registrar in production builds)
- * enables static asset caching. In dev the worker stays passive so hot
- * reload is never stale.
  */
 
-const VERSION = "v1.0.0";
+const VERSION = "v1.1.0";
 const STATIC_CACHE = `sovereign-static-${VERSION}`;
 const PAGE_CACHE = `sovereign-pages-${VERSION}`;
-const MEDIA_CACHE = `sovereign-media-${VERSION}`;
-const OWNED = [STATIC_CACHE, PAGE_CACHE, MEDIA_CACHE];
+const OWNED = [STATIC_CACHE, PAGE_CACHE];
 
 const PRECACHE = [
   "/",
@@ -31,11 +27,6 @@ const PRECACHE = [
   "/icons/icon-maskable-512.png",
   "/icons/apple-touch-icon.png",
 ];
-
-const PROD =
-  new URL(self.location.href).searchParams.get("prod") === "1";
-
-/* ---------------- lifecycle ---------------- */
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -82,35 +73,34 @@ self.addEventListener("fetch", (event) => {
 
   // 1) Navigations — network-first, cached page + offline page as fallback
   if (req.mode === "navigate") {
-    event.respondWith(networkFirst(req, PAGE_CACHE, "/offline.html"));
+    event.respondWith(networkFirst(req, PAGE_CACHE));
     return;
   }
 
-  if (!PROD) return; // dev: stay passive, let the dev server own everything
-
-  // 2) Immutable hashed assets + icons — cache-first
-  if (
-    url.pathname.startsWith("/_next/static/") ||
-    url.pathname.startsWith("/icons/") ||
-    url.pathname === "/favicon.svg" ||
-    url.pathname === "/logo.svg"
-  ) {
-    event.respondWith(cacheFirst(req, STATIC_CACHE));
+  // 2) Static assets — stale-while-revalidate (instant + self-healing)
+  if (isStaticAsset(url.pathname, req.destination)) {
+    event.respondWith(staleWhileRevalidate(req, STATIC_CACHE));
     return;
   }
 
-  // 3) Other media (images, fonts, styles) — stale-while-revalidate
-  if (
-    req.destination === "image" ||
-    req.destination === "font" ||
-    req.destination === "style"
-  ) {
-    event.respondWith(staleWhileRevalidate(req, MEDIA_CACHE));
-    return;
-  }
-
-  // 4) Everything else (RSC payloads, prefetches) — plain network
+  // 3) Everything else (RSC payloads, prefetches) — plain network
 });
+
+function isStaticAsset(pathname, destination) {
+  return (
+    pathname.startsWith("/_next/static/") ||
+    pathname.startsWith("/icons/") ||
+    pathname === "/favicon.svg" ||
+    pathname === "/logo.svg" ||
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/offline.html" ||
+    destination === "image" ||
+    destination === "font" ||
+    destination === "style" ||
+    destination === "script" ||
+    destination === "worker"
+  );
+}
 
 /* ---------------- strategies ---------------- */
 
@@ -123,7 +113,7 @@ function withTimeout(promise, ms) {
   ]);
 }
 
-async function networkFirst(req, cacheName, fallbackPath) {
+async function networkFirst(req, cacheName) {
   const cache = await caches.open(cacheName);
   try {
     const fresh = await withTimeout(fetch(req), 3500);
@@ -134,7 +124,7 @@ async function networkFirst(req, cacheName, fallbackPath) {
       (await cache.match(req, { ignoreSearch: true }).catch(() => null)) ||
       (await cache.match("/").catch(() => null));
     if (cached) return cached;
-    const fallback = await cache.match(fallbackPath).catch(() => null);
+    const fallback = await cache.match("/offline.html").catch(() => null);
     if (fallback) return fallback;
     return new Response("You are offline.", {
       status: 503,
@@ -142,15 +132,6 @@ async function networkFirst(req, cacheName, fallbackPath) {
       headers: { "Content-Type": "text/plain" },
     });
   }
-}
-
-async function cacheFirst(req, cacheName) {
-  const cache = await caches.open(cacheName);
-  const cached = await cache.match(req).catch(() => null);
-  if (cached) return cached;
-  const fresh = await fetch(req);
-  if (fresh && fresh.ok) cache.put(req, fresh.clone()).catch(() => {});
-  return fresh;
 }
 
 async function staleWhileRevalidate(req, cacheName) {

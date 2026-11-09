@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { PwaProvider } from "@/components/pwa/pwa-provider";
+import { InstallPromptDialog } from "@/components/pwa/install-prompt-dialog";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -87,6 +88,7 @@ export default function RootLayout({
       >
         {children}
         <PwaProvider />
+        <InstallPromptDialog />
         <Toaster />
         <Sonner position="top-center" richColors closeButton />
       </body>

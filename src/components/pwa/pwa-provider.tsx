@@ -59,13 +59,12 @@ export function PwaProvider() {
 
     /* ---------------- service worker registration ---------------- */
     let cleanupTimer: ReturnType<typeof clearTimeout> | undefined;
+    let readyTimer: ReturnType<typeof clearTimeout> | undefined;
     if ("serviceWorker" in navigator) {
-      const prod = process.env.NODE_ENV === "production";
-      const swUrl = prod ? "/sw.js?prod=1" : "/sw.js";
       // register shortly after load — never compete with first paint
       cleanupTimer = setTimeout(() => {
         navigator.serviceWorker
-          .register(swUrl, { scope: "/" })
+          .register("/sw.js", { scope: "/" })
           .then((reg) => {
             usePwaStore.getState().setReady(true);
             // pick up a waiting worker promptly in future sessions
@@ -80,6 +79,23 @@ export function PwaProvider() {
                 }
               });
             });
+            // one-time celebration: the arena now survives airplane mode
+            readyTimer = setTimeout(() => {
+              try {
+                if (window.localStorage.getItem("sovereign.offline-ready"))
+                  return;
+                window.localStorage.setItem("sovereign.offline-ready", "1");
+              } catch {
+                return; // private mode — skip the toast silently
+              }
+              toast.success(
+                "Offline ready — Sovereign now plays without a connection.",
+                {
+                  description:
+                    "Install it from the crown button to launch from your home screen.",
+                }
+              );
+            }, 5000);
           })
           .catch(() => {
             /* offline support is a bonus — never a blocker */
@@ -93,6 +109,7 @@ export function PwaProvider() {
       window.removeEventListener("beforeinstallprompt", onPrompt);
       window.removeEventListener("appinstalled", onInstalled);
       if (cleanupTimer) clearTimeout(cleanupTimer);
+      if (readyTimer) clearTimeout(readyTimer);
     };
   }, []);
 

@@ -14,6 +14,7 @@ import {
   Trophy,
   Volume2,
   VolumeX,
+  WifiOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CloudDot } from "@/components/chess/data-vault";
@@ -27,6 +28,7 @@ import {
 import type { ChessGame } from "@/hooks/use-chess-game";
 import type { AppTab } from "@/components/chess/bottom-nav";
 import { useCareer } from "@/hooks/use-career";
+import { usePwaStore } from "@/lib/pwa-store";
 import { dateKey } from "@/lib/career";
 import { cn } from "@/lib/utils";
 
@@ -67,6 +69,7 @@ export function Header({
   onRules: () => void;
 }) {
   const career = useCareer();
+  const offline = usePwaStore((s) => s.offline);
   const trainedToday = career.lastActiveDate === dateKey();
 
   return (
@@ -114,6 +117,17 @@ export function Header({
         </nav>
 
         <div className="flex items-center gap-2">
+          {/* -------- offline status -------- */}
+          {offline && (
+            <span
+              className="flex items-center gap-1.5 rounded-full border border-red-400/40 bg-red-500/10 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-red-300"
+              aria-label="You are offline — the app keeps working on-device"
+            >
+              <WifiOff className="h-3 w-3" />
+              Offline
+            </span>
+          )}
+
           {/* -------- career chips -------- */}
           <div className="hidden items-center gap-1.5 sm:flex">
             <button
