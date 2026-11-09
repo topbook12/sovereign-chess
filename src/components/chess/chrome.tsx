@@ -229,7 +229,7 @@ export function Header({
                   variant="outline"
                   size="icon"
                   onClick={() => game.setSoundOn(!game.soundOn)}
-                  className="h-9 w-9 border-white/10 bg-white/5 text-foreground/80 hover:border-gold/40 hover:bg-white/10"
+                  className="h-11 w-11 border-white/10 bg-white/5 text-foreground/80 hover:border-gold/40 hover:bg-white/10 sm:h-9 sm:w-9"
                   aria-label={game.soundOn ? "Mute sounds" : "Unmute sounds"}
                 >
                   {game.soundOn ? (
@@ -248,7 +248,7 @@ export function Header({
                   variant="outline"
                   size="icon"
                   onClick={onRules}
-                  className="h-9 w-9 border-white/10 bg-white/5 text-foreground/80 hover:border-gold/40 hover:bg-white/10"
+                  className="h-11 w-11 border-white/10 bg-white/5 text-foreground/80 hover:border-gold/40 hover:bg-white/10 sm:h-9 sm:w-9"
                   aria-label="Rules"
                 >
                   <ScrollText className="h-4 w-4" />

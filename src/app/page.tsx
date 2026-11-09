@@ -24,6 +24,7 @@ import { type StoredGame, loadRecentGames } from "@/lib/game-store";
 import { fetchCloudGameCount, flushQueue } from "@/lib/cloud";
 import { serializeGame } from "@/lib/chess-utils";
 import { setPlatformTotals } from "@/lib/career";
+import { pulse } from "@/lib/haptics";
 import { PUZZLES, OPENINGS } from "@/lib/puzzles";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +38,7 @@ export default function Home() {
   const [rulesOpen, setRulesOpen] = useState(false);
   const [pendingGame, setPendingGame] = useState<StoredGame | null>(null);
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
+  const [focusMode, setFocusMode] = useState(false);
   const archiveRef = useRef<Map<string, StoredGame>>(new Map());
 
   // cloud boot — drain any queued games + refresh the archive counter once,
@@ -49,6 +51,41 @@ export default function Home() {
     return () => window.clearTimeout(t);
   }, []);
 
+  // restore Focus Mode preference (only meaningful inside the play room)
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem("sovereign.focus") === "1") {
+        const r = requestAnimationFrame(() => setFocusMode(true));
+        return () => cancelAnimationFrame(r);
+      }
+    } catch {
+      /* private mode — default to the full layout */
+    }
+  }, []);
+
+  const toggleFocusMode = useCallback(() => {
+    pulse("achievement");
+    setFocusMode((f) => {
+      const next = !f;
+      try {
+        window.localStorage.setItem("sovereign.focus", next ? "1" : "0");
+      } catch {
+        /* session-only preference */
+      }
+      return next;
+    });
+  }, []);
+
+  // Escape leaves Focus Mode on desktop — the arena always has a way out
+  useEffect(() => {
+    if (!focusMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") toggleFocusMode();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focusMode, toggleFocusMode]);
+
   // PWA shortcut / notification deep links — "/?tab=analyze" opens the oracle
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab");
@@ -57,6 +94,9 @@ export default function Home() {
       return () => cancelAnimationFrame(r);
     }
   }, []);
+
+  // Focus Mode is an arena concept — any other room returns the full chrome
+  const focusOn = focusMode && tab === "play";
 
   const resultKey = game.result
     ? `${game.result.reason}-${game.result.winner ?? "none"}-${game.history.length}`
@@ -89,59 +129,84 @@ export default function Home() {
   }, [archiveCurrentGame, resultKey]);
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    /* SOVEREIGN APP SHELL — a fixed-height column. The document never
+       scrolls; each room owns an internal scroll surface, so tab switch
+       never loses position and the browser can never yank the viewport. */
+    <div className="flex h-dvh flex-col overflow-hidden">
       <AuroraBackground />
-      <Header
-        game={game}
-        tab={tab}
-        onTab={setTab}
-        onNewGame={() => {
-          setTab("play");
-          setNewGameOpen(true);
-        }}
-        onRules={() => setRulesOpen(true)}
-      />
+      {!focusOn && (
+        <Header
+          game={game}
+          tab={tab}
+          onTab={setTab}
+          onNewGame={() => {
+            setTab("play");
+            setNewGameOpen(true);
+          }}
+          onRules={() => setRulesOpen(true)}
+        />
+      )}
 
-      <main className="relative z-10 mx-auto w-full max-w-7xl flex-1 px-3 pb-32 pt-4 sm:px-6 lg:pb-10">
+      <main
+        className={cn(
+          "relative z-10 mx-auto flex w-full max-w-7xl min-h-0 flex-1 flex-col",
+          focusOn ? "px-0" : "px-3 pt-4 sm:px-6"
+        )}
+      >
         {/* ---------------- play room ---------------- */}
-        <div className={cn(tab !== "play" && "hidden")}>
-          <PlayView
-            game={game}
-            onRequestNewGame={() => setNewGameOpen(true)}
-          />
+        <div className={cn("flex min-h-0 flex-1 flex-col", tab !== "play" && "hidden")}>
+          <div
+            className={cn(
+              "tab-scroll min-h-0 flex-1",
+              focusOn ? "px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2" : "pb-36 pt-1 lg:pb-6"
+            )}
+          >
+            <PlayView
+              game={game}
+              focus={focusOn}
+              onToggleFocus={toggleFocusMode}
+              onRequestNewGame={() => setNewGameOpen(true)}
+            />
+          </div>
         </div>
 
         {/* ---------------- analyze room ---------------- */}
-        <div className={cn(tab !== "analyze" && "hidden")}>
-          <AnalyzeView
-            pendingGame={pendingGame}
-            onConsumePendingGame={() => setPendingGame(null)}
-          />
+        <div className={cn("flex min-h-0 flex-1 flex-col", tab !== "analyze" && "hidden")}>
+          <div className="tab-scroll min-h-0 flex-1 pb-36 pt-1 lg:pb-6">
+            <AnalyzeView
+              pendingGame={pendingGame}
+              onConsumePendingGame={() => setPendingGame(null)}
+            />
+          </div>
         </div>
 
         {/* ---------------- learn room ---------------- */}
-        <div className={cn(tab !== "learn" && "hidden")}>
-          <LearnView />
+        <div className={cn("flex min-h-0 flex-1 flex-col", tab !== "learn" && "hidden")}>
+          <div className="tab-scroll min-h-0 flex-1 pb-36 pt-1 lg:pb-6">
+            <LearnView />
+          </div>
         </div>
 
         {/* ---------------- career room ---------------- */}
-        <div className={cn(tab !== "career" && "hidden")}>
-          <CareerView
-            onGoAnalyze={(gameId) => {
-              // hand the chosen duel straight to the oracle
-              const stored = gameId
-                ? loadRecentGames().find((x) => x.id === gameId) ?? null
-                : null;
-              if (stored) setPendingGame(stored);
-              setTab("analyze");
-            }}
-          />
+        <div className={cn("flex min-h-0 flex-1 flex-col", tab !== "career" && "hidden")}>
+          <div className="tab-scroll min-h-0 flex-1 pb-36 pt-1 lg:pb-6">
+            <CareerView
+              onGoAnalyze={(gameId) => {
+                // hand the chosen duel straight to the oracle
+                const stored = gameId
+                  ? loadRecentGames().find((x) => x.id === gameId) ?? null
+                  : null;
+                if (stored) setPendingGame(stored);
+                setTab("analyze");
+              }}
+            />
+          </div>
         </div>
       </main>
 
-      <Footer />
+      {!focusOn && <Footer />}
 
-      <BottomNav tab={tab} onTab={setTab} />
+      {!focusOn && <BottomNav tab={tab} onTab={setTab} />}
 
       <NewGameDialog
         key={newGameOpen ? "ng-open" : "ng-closed"}

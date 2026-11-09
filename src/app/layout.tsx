@@ -73,6 +73,8 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  // a game board must never pinch-zoom or double-tap-zoom mid-duel
+  userScalable: false,
   viewportFit: "cover",
 };
 

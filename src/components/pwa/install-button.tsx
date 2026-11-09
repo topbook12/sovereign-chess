@@ -55,7 +55,7 @@ export function InstallButton() {
               usePwaStore.getState().setPromptOpen(true);
             }
           }}
-          className="h-9 w-9 border-gold/40 bg-gold/10 text-gold-soft hover:border-gold hover:bg-gold/20"
+          className="h-11 w-11 border-gold/40 bg-gold/10 text-gold-soft hover:border-gold hover:bg-gold/20 sm:h-9 sm:w-9"
           aria-label={
             deferred
               ? "Install Sovereign as an app"

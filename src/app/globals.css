@@ -97,13 +97,22 @@
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    height: 100%;
   }
   body {
     @apply bg-background text-foreground;
     background: #0a0b0e;
-    overflow-x: hidden;
-    /* no rubber-band/pull-to-refresh mid-game */
-    overscroll-behavior-y: contain;
+    /* SOVEREIGN APP-SHELL — the document itself NEVER scrolls.
+       Every room owns an internal scroll surface, so the mobile
+       browser can never yank the view (URL-bar collapse, rubber-band,
+       pull-to-refresh, focus-scroll jumps are all structurally impossible). */
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
   }
   ::selection {
     background: rgba(212, 175, 55, 0.35);
@@ -132,6 +141,26 @@ a,
 }
 
 /* Momentum scrolling on the slim panels is declared with .scroll-slim below */
+
+/* Room scroll surfaces — the ONLY places that may scroll in the app shell.
+   overscroll-contain keeps every gesture inside its own room, so dragging
+   a piece or flicking a list can never scroll (or bounce) anything else. */
+.tab-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+.tab-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.tab-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.tab-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.4), rgba(212, 175, 55, 0.12));
+  border-radius: 999px;
+}
 
 /* Floating bottom nav — glass with a golden under-sheen */
 .nav-pill {
@@ -452,3 +481,5 @@ a,
   user-select: none;
   pointer-events: none;
 }
+
+/* sovereign: shell v2 marker */
