@@ -102,7 +102,7 @@ export default function Home() {
         onRules={() => setRulesOpen(true)}
       />
 
-      <main className="relative z-10 mx-auto w-full max-w-7xl flex-1 px-3 pb-28 pt-4 sm:px-6 lg:pb-10">
+      <main className="relative z-10 mx-auto w-full max-w-7xl flex-1 px-3 pb-32 pt-4 sm:px-6 lg:pb-10">
         {/* ---------------- play room ---------------- */}
         <div className={cn(tab !== "play" && "hidden")}>
           <PlayView

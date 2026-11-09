@@ -1,7 +1,10 @@
 /**
  * Sovereign Chess — procedural sound engine (Web Audio API).
  * No audio files needed; every effect is synthesized for zero-latency play.
+ * Every event also pulses a matching haptic — independent of this toggle.
  */
+
+import { hapticForSound } from "./haptics";
 
 export type SoundName =
   | "move"
@@ -124,6 +127,7 @@ function knock(
 }
 
 export function playSound(name: SoundName) {
+  hapticForSound(name); // palm feedback rides along, even when muted
   if (!enabled) return;
   try {
     switch (name) {

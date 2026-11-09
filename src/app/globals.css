@@ -92,11 +92,18 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
   body {
     @apply bg-background text-foreground;
     background: #0a0b0e;
     overflow-x: hidden;
+    /* no rubber-band/pull-to-refresh mid-game */
+    overscroll-behavior-y: contain;
   }
   ::selection {
     background: rgba(212, 175, 55, 0.35);
@@ -104,10 +111,60 @@
   }
 }
 
+/* ---------- Mobile pro touch layer ---------- */
+
+/* Kill the 300ms double-tap-zoom delay on all controls */
+button,
+a,
+[role="button"],
+[role="tab"],
+[role="grid"] {
+  touch-action: manipulation;
+}
+
+/* iOS zooms any focused control under 16px — keep forms steady on phones */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1em) !important;
+  }
+}
+
+/* Momentum scrolling on the slim panels is declared with .scroll-slim below */
+
+/* Floating bottom nav — glass with a golden under-sheen */
+.nav-pill {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 40%),
+    rgba(8, 10, 14, 0.72);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.5) inset,
+    0 24px 60px -16px rgba(0, 0, 0, 0.95),
+    0 0 44px -14px rgba(212, 175, 55, 0.35);
+}
+
+/* Respect users who prefer stillness + save GPU on small devices */
+@media (prefers-reduced-motion: reduce) {
+  .aurora-blob,
+  .shimmer-line,
+  .logo-glow,
+  .thinking-dot {
+    animation: none !important;
+  }
+}
+@media (max-width: 640px) {
+  .aurora-blob {
+    filter: blur(58px); /* cheaper blur, same mood on phone GPUs */
+  }
+}
+
 /* ---------- Scrollbars ---------- */
 .scroll-slim {
   scrollbar-width: thin;
   scrollbar-color: rgba(212, 175, 55, 0.35) transparent;
+  -webkit-overflow-scrolling: touch;
 }
 .scroll-slim::-webkit-scrollbar {
   width: 6px;

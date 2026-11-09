@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ChevronsRight,
   Flag,
@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Sparkles,
   Undo2,
+  Vibrate,
   Volume2,
   VolumeX,
   Crosshair,
@@ -26,6 +27,10 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import {
+  hapticsEnabled,
+  setHapticsEnabled,
+} from "@/lib/haptics";
 import {
   Tooltip,
   TooltipContent,
@@ -448,6 +453,7 @@ function formatNodes(n: number): string {
 /* ---------------- Preferences ---------------- */
 
 export function PrefsCard({ game }: { game: ChessGame }) {
+  const [haptics, setHaptics] = useState(hapticsEnabled());
   return (
     <CardShell title="Ambience" icon={<Sparkles className="h-4 w-4" />}>
       <div className="space-y-3">
@@ -457,6 +463,16 @@ export function PrefsCard({ game }: { game: ChessGame }) {
           hint="Hand-crafted wooden clicks"
           checked={game.soundOn}
           onChange={game.setSoundOn}
+        />
+        <PrefRow
+          icon={<Vibrate className="h-4 w-4" />}
+          label="Haptics"
+          hint="Palm pulses on every move"
+          checked={haptics}
+          onChange={(v) => {
+            setHaptics(v);
+            setHapticsEnabled(v);
+          }}
         />
         <PrefRow
           icon={<Crosshair className="h-4 w-4" />}

@@ -70,7 +70,10 @@ export function Header({
   const trainedToday = career.lastActiveDate === dateKey();
 
   return (
-    <header className="relative z-10 border-b border-white/6 bg-black/25 backdrop-blur-md">
+    <header
+      className="relative z-10 border-b border-white/6 bg-black/25 backdrop-blur-md"
+      style={{ paddingTop: "env(safe-area-inset-top)" }}
+    >
       <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-3 px-3 sm:px-6">
         <div className="flex items-center gap-3">
           <div className="logo-glow flex h-10 w-10 items-center justify-center rounded-xl border border-gold/40 bg-gradient-to-b from-gold/25 to-transparent">
@@ -356,6 +359,12 @@ export function Footer() {
           </span>
         </span>
       </div>
+      {/* clearance for the floating mobile nav + home-bar safe area */}
+      <div
+        aria-hidden="true"
+        className="lg:hidden"
+        style={{ height: "calc(4.4rem + env(safe-area-inset-bottom))" }}
+      />
     </footer>
   );
 }
