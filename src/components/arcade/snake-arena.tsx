@@ -270,7 +270,7 @@ export function SnakeArenaGame({ players, practice, onFinish, onExit }: ArcadeGa
       >
         <div
           ref={wrapRef}
-          className="relative min-h-0 w-full flex-1 touch-none overflow-hidden rounded-2xl border border-white/10 bg-[#1c3554] shadow-[0_18px_60px_-18px_rgba(0,0,0,0.8)]"
+          className="relative min-h-0 w-full flex-1 touch-none overflow-hidden rounded-2xl border border-white/10 bg-[#222b5e] shadow-[0_18px_60px_-18px_rgba(0,0,0,0.8)]"
         >
           <canvas
             ref={canvasRef}

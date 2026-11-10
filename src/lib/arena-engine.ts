@@ -82,11 +82,11 @@ const SPAWN_PROTECT = 4; // seconds of invulnerability after every spawn
 
 /* ---------------- palette / content ---------------- */
 
-const BG = "#1c3554";
-const BLOTCH = "#142c47";
+const BG = "#222b5e";
+const BLOTCH = "#1a2350";
 const DANGER = "#e2495f";
 
-const COMMON_FOOD = ["🌮", "🍎", "🍫", "🍌", "🍣", "🌭", "🥓", "🥐", "🍩", "🧁", "🍬"];
+const COMMON_FOOD = ["🌮", "🍎", "🍫", "🍌", "🍣", "🌭", "🥓", "🥐", "🍩", "🧁", "🍬", "🍪", "🍭", "🍇"];
 const MID_FOOD = ["🍈", "🍏", "🍊"];
 const DROP_FOOD = ["🍎", "🍫", "🍩"];
 
@@ -123,6 +123,24 @@ function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
+/** lighten (k > 0) or darken (k < 0) a #rrggbb colour — used for glossy irises */
+function shade(hex: string, k: number): string {
+  const v = parseInt(hex.slice(1), 16);
+  let r = (v >> 16) & 255;
+  let g = (v >> 8) & 255;
+  let b = v & 255;
+  if (k >= 0) {
+    r += (255 - r) * k;
+    g += (255 - g) * k;
+    b += (255 - b) * k;
+  } else {
+    r *= 1 + k;
+    g *= 1 + k;
+    b *= 1 + k;
+  }
+  return `rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})`;
+}
+
 /* ---------------- internal types ---------------- */
 
 interface Food {
@@ -132,6 +150,8 @@ interface Food {
   value: number;
   emoji: string;
   gem: boolean;
+  /** bob phase — purely cosmetic */
+  ph: number;
 }
 
 interface Worm {
@@ -310,14 +330,14 @@ export class ArenaEngine {
     this.player = this.makeWorm({
       name: this.opts.playerName,
       isPlayer: true,
-      eye: "#2f7fd1",
+      eye: "#2e6ed8",
       x: 0,
       y: 90,
       angle: -Math.PI / 2,
       mass: START_MASS,
-      rim: "#ecd28a",
-      rimDark: "#d4b45f",
-      inner: "#fffdf4",
+      rim: "#dfe6f2",
+      rimDark: "#c6d0e0",
+      inner: "#ffffff",
     });
     this.worms.push(this.player);
 
@@ -345,9 +365,9 @@ export class ArenaEngine {
         y: by,
         angle: ba,
         mass,
-        rim: "#d9e4ee",
-        rimDark: "#bccfdd",
-        inner: "#f4f8fc",
+        rim: "#dbe3ef",
+        rimDark: "#c2cdde",
+        inner: "#fafcff",
       });
       const bp = hashRng(seed, 8000 + i);
       bot.th0 = ba;
@@ -378,7 +398,7 @@ export class ArenaEngine {
 
     this.camX = this.player.x;
     this.camY = this.player.y;
-    this.scale = 1.1;
+    this.scale = 1.22;
   }
 
   private makeWorm(p: {
@@ -451,7 +471,7 @@ export class ArenaEngine {
     }
     const set = gem ? ["💎"] : value >= 3 ? MID_FOOD : COMMON_FOOD;
     const emoji = set[Math.floor(r() * set.length)];
-    return { x: Math.cos(a) * rad, y: Math.sin(a) * rad, r: size, value, emoji, gem };
+    return { x: Math.cos(a) * rad, y: Math.sin(a) * rad, r: size, value, emoji, gem, ph: r() };
   }
 
   /* ---------- simulation ---------- */
@@ -465,7 +485,7 @@ export class ArenaEngine {
   }
 
   private refreshShape(w: Worm) {
-    w.radius = Math.min(30, 11 + Math.sqrt(w.mass) * 0.85);
+    w.radius = Math.min(32, 12 + Math.sqrt(w.mass) * 0.9);
   }
 
   private step(dt: number) {
@@ -529,6 +549,7 @@ export class ArenaEngine {
                 value: 1,
                 emoji: DROP_FOOD[Math.floor(this.rng() * DROP_FOOD.length)],
                 gem: false,
+                ph: this.rng(),
               });
             }
           }
@@ -744,11 +765,12 @@ export class ArenaEngine {
         value: 2,
         emoji: COMMON_FOOD[Math.floor(this.rng() * COMMON_FOOD.length)],
         gem: false,
+        ph: this.rng(),
       });
       count += 1;
     }
     if (w.mass > 60) {
-      this.food.push({ x: w.x, y: w.y, r: 15, value: 8, emoji: "💎", gem: true });
+      this.food.push({ x: w.x, y: w.y, r: 15, value: 8, emoji: "💎", gem: true, ph: this.rng() });
     }
   }
 
@@ -756,7 +778,7 @@ export class ArenaEngine {
 
   private updateCamera(dt: number) {
     const k = 1 - Math.exp(-dt * 5);
-    const targetScale = clamp(1.14 - (this.player.radius - 13) * 0.02, 0.55, 1.14);
+    const targetScale = clamp(1.24 - (this.player.radius - 13) * 0.02, 0.6, 1.24);
     this.scale += (targetScale - this.scale) * k;
     this.camX += (this.player.x - this.camX) * k;
     this.camY += (this.player.y - this.camY) * k;
@@ -815,21 +837,28 @@ export class ArenaEngine {
     ctx.fillStyle = "rgba(180,40,60,0.16)";
     ctx.fill();
 
-    // feast
+    // feast — juicy emoji, soft ground shadow, gentle bob (like the artwork)
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     for (const f of this.food) {
       if (f.x < vx0 || f.x > vx1 || f.y < vy0 || f.y > vy1) continue;
+      const bobY = f.y + Math.sin(this.simTime * 2.1 + f.ph * TAU) * 2.4;
+      ctx.globalAlpha = 0.2;
+      ctx.fillStyle = "#0a1230";
+      ctx.beginPath();
+      ctx.ellipse(f.x, f.y + f.r * 0.95, f.r * 0.85, f.r * 0.3, 0, 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = 1;
       if (f.gem) {
         ctx.globalAlpha = 0.22;
         ctx.fillStyle = "#ffcf5e";
         ctx.beginPath();
-        ctx.arc(f.x, f.y, f.r * 2.6, 0, TAU);
+        ctx.arc(f.x, bobY, f.r * 2.6, 0, TAU);
         ctx.fill();
         ctx.globalAlpha = 1;
       }
-      ctx.font = `${Math.round(f.r * 1.9)}px ${EMOJI_FONT}`;
-      ctx.fillText(f.emoji, f.x, f.y);
+      ctx.font = `${Math.round(f.r * 2.1)}px ${EMOJI_FONT}`;
+      ctx.fillText(f.emoji, f.x, bobY);
     }
 
     // worms — bots below the player
@@ -914,19 +943,19 @@ export class ArenaEngine {
       ctx.globalAlpha = 0.62 + 0.3 * Math.sin(this.simTime * 14);
     }
 
-    // band pass — darker scallops every 5th node (the segmented look)
+    // rib bumps — every 3rd node swells a touch: the artwork's segment rings
     ctx.beginPath();
     for (let i = 0; i < n; i++) {
       const x = pts[i * 2];
       const y = pts[i * 2 + 1];
-      if (x < vx0 || x > vx1 || y < vy0 || y > vy1 || i % 5 !== 0) continue;
-      ctx.moveTo(x + r * 1.04, y);
-      ctx.arc(x, y, r * 1.04, 0, TAU);
+      if (x < vx0 || x > vx1 || y < vy0 || y > vy1 || i % 3 !== 0) continue;
+      ctx.moveTo(x + r * 1.1, y);
+      ctx.arc(x, y, r * 1.1, 0, TAU);
     }
     ctx.fillStyle = w.rimDark;
     ctx.fill();
 
-    // rim pass — every node
+    // rim pass — every node (the soft grey-white edge of the body)
     ctx.beginPath();
     for (let i = 0; i < n; i++) {
       const x = pts[i * 2];
@@ -938,17 +967,34 @@ export class ArenaEngine {
     ctx.fillStyle = w.rim;
     ctx.fill();
 
-    // inner pass — the glossy body
+    // inner pass — the glossy white body core
     ctx.beginPath();
     for (let i = 0; i < n; i++) {
       const x = pts[i * 2];
       const y = pts[i * 2 + 1];
       if (x < vx0 || x > vx1 || y < vy0 || y > vy1) continue;
-      ctx.moveTo(x + r * 0.8, y);
-      ctx.arc(x, y, r * 0.8, 0, TAU);
+      ctx.moveTo(x + r * 0.74, y);
+      ctx.arc(x, y, r * 0.74, 0, TAU);
     }
     ctx.fillStyle = w.inner;
     ctx.fill();
+
+    // rib creases — curved segment lines across the belly, bulging tail-ward
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "rgba(148,160,180,0.5)";
+    ctx.lineWidth = Math.max(1.2, r * 0.17);
+    ctx.beginPath();
+    for (let i = 3; i < n - 1; i += 3) {
+      const x = pts[i * 2];
+      const y = pts[i * 2 + 1];
+      if (x < vx0 || x > vx1 || y < vy0 || y > vy1) continue;
+      const px = pts[(i - 3) * 2];
+      const py = pts[(i - 3) * 2 + 1];
+      const ta = Math.atan2(py - y, px - x);
+      ctx.moveTo(x + Math.cos(ta - 1.15) * r * 0.68, y + Math.sin(ta - 1.15) * r * 0.68);
+      ctx.arc(x, y, r * 0.68, ta - 1.15, ta + 1.15);
+    }
+    ctx.stroke();
 
     this.drawHead(w);
     ctx.globalAlpha = 1;
@@ -962,22 +1008,23 @@ export class ArenaEngine {
     const px = -sa;
     const py = ca;
 
-    // head base
+    // head base — white and just a touch bigger than the body
     ctx.beginPath();
-    ctx.arc(w.x, w.y, r * 1.05, 0, TAU);
+    ctx.arc(w.x, w.y, r * 1.06, 0, TAU);
     ctx.fillStyle = w.rimDark;
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(w.x, w.y, r * 0.88, 0, TAU);
+    ctx.arc(w.x, w.y, r * 0.92, 0, TAU);
     ctx.fillStyle = w.inner;
     ctx.fill();
 
     // the big cartoon eyes
     const steering = this.steerX * this.steerX + this.steerY * this.steerY > 900;
     const la = w.isPlayer && steering ? Math.atan2(this.steerY, this.steerX) : w.angle;
-    const eyeR = r * 0.56;
-    const fwd = r * 0.28;
-    const side = r * 0.62;
+    // the artwork's huge, glossy, side-by-side eyes
+    const eyeR = r * 0.62;
+    const fwd = r * 0.3;
+    const side = r * 0.54;
     const blink = (this.simTime + w.blinkSeed) % 3.7 < 0.12;
     for (const sgn of [-1, 1]) {
       const ex = w.x + ca * fwd + px * side * sgn;
@@ -986,8 +1033,8 @@ export class ArenaEngine {
       ctx.arc(ex, ey, eyeR, 0, TAU);
       ctx.fillStyle = "#ffffff";
       ctx.fill();
-      ctx.lineWidth = Math.max(1, eyeR * 0.16);
-      ctx.strokeStyle = "#b6c5d3";
+      ctx.lineWidth = Math.max(1, eyeR * 0.12);
+      ctx.strokeStyle = "#b3c0d2";
       ctx.stroke();
       if (blink) {
         ctx.beginPath();
@@ -1001,30 +1048,50 @@ export class ArenaEngine {
         ctx.strokeStyle = "#8fa2b4";
         ctx.stroke();
       } else {
-        const ix = ex + Math.cos(la) * eyeR * 0.3;
-        const iy = ey + Math.sin(la) * eyeR * 0.3;
+        // iris — glassy gradient orb looking where the worm goes
+        const ix = ex + Math.cos(la) * eyeR * 0.26;
+        const iy = ey + Math.sin(la) * eyeR * 0.26;
+        const ir = eyeR * 0.66;
+        const irGrad = ctx.createRadialGradient(
+          ix - ir * 0.3,
+          iy - ir * 0.35,
+          ir * 0.1,
+          ix,
+          iy,
+          ir
+        );
+        irGrad.addColorStop(0, shade(w.eye, 0.55));
+        irGrad.addColorStop(0.6, w.eye);
+        irGrad.addColorStop(1, shade(w.eye, -0.5));
         ctx.beginPath();
-        ctx.arc(ix, iy, eyeR * 0.62, 0, TAU);
-        ctx.fillStyle = w.eye;
+        ctx.arc(ix, iy, ir, 0, TAU);
+        ctx.fillStyle = irGrad;
         ctx.fill();
-        const gx = ex + Math.cos(la) * eyeR * 0.46;
-        const gy = ey + Math.sin(la) * eyeR * 0.46;
+        // big dark pupil
+        const gx = ex + Math.cos(la) * eyeR * 0.44;
+        const gy = ey + Math.sin(la) * eyeR * 0.44;
         ctx.beginPath();
-        ctx.arc(gx, gy, eyeR * 0.34, 0, TAU);
-        ctx.fillStyle = "#101820";
+        ctx.arc(gx, gy, eyeR * 0.36, 0, TAU);
+        ctx.fillStyle = "#0c1420";
+        ctx.fill();
+        // twin highlights — the artwork's sparkle
+        ctx.beginPath();
+        ctx.arc(ex - eyeR * 0.3, ey - eyeR * 0.36, eyeR * 0.19, 0, TAU);
+        ctx.fillStyle = "#ffffff";
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(ex - eyeR * 0.3, ey - eyeR * 0.34, eyeR * 0.16, 0, TAU);
+        ctx.arc(ex + eyeR * 0.22, ey + eyeR * 0.3, eyeR * 0.1, 0, TAU);
         ctx.fillStyle = "#ffffff";
         ctx.fill();
       }
     }
 
-    // the little smile
+    // the little smile — "⌣" between the eyes, on the tail side like the artwork
+    const tailA = w.angle + Math.PI;
     ctx.beginPath();
-    ctx.arc(w.x + ca * r * 0.12, w.y + sa * r * 0.12, r * 0.42, w.angle - 0.55, w.angle + 0.55);
-    ctx.lineWidth = Math.max(1.5, r * 0.1);
-    ctx.strokeStyle = "rgba(46,64,80,0.9)";
+    ctx.arc(w.x - ca * r * 0.16, w.y - sa * r * 0.16, r * 0.36, tailA - 0.7, tailA + 0.7);
+    ctx.lineWidth = Math.max(1.5, r * 0.11);
+    ctx.strokeStyle = "rgba(58,74,94,0.9)";
     ctx.lineCap = "round";
     ctx.stroke();
 
