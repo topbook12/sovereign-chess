@@ -11,7 +11,7 @@
  *  - API routes are NEVER cached — user data lives on-device first.
  */
 
-const VERSION = "v1.3.0";
+const VERSION = "v1.4.0";
 const STATIC_CACHE = `sovereign-static-${VERSION}`;
 const PAGE_CACHE = `sovereign-pages-${VERSION}`;
 const OWNED = [STATIC_CACHE, PAGE_CACHE];

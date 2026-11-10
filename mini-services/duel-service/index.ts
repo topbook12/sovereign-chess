@@ -147,12 +147,16 @@ function endRoom(room: Room, winner: Side | null, reason: string) {
   if (room.status === "ended") return;
   room.status = "ended";
   room.running = false;
-  // the pot: winner pockets both stakes (2 💎) · draw refunds 1 💎 each ·
-  // the loser's stake is consumed — that is the real-money economy
+  // the raked pot: each side locks 3 💎 → 6 💎 pot · winner takes 4 💎
+  // (net +1) · loser gets a 1 💎 consolation (net −2) · draw refunds 3 💎
+  // each · the platform keeps the last 1 💎 of every decided duel
   room.result = {
     winner,
     reason,
-    rewards: winner === null ? { w: 1, b: 1 } : { [winner]: 2, [other(winner)]: 0 },
+    rewards:
+      winner === null
+        ? { w: 3, b: 3 }
+        : { [winner]: 4, [other(winner)]: 1 },
   };
   for (const side of ["w", "b"] as Side[]) {
     const seat = room.seats[side];

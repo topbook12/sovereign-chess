@@ -4,5 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "bun --hot index.ts 2>&1 | tee duel.log"
+  },
+  "dependencies": {
+    "socket.io": "^4.8.4"
   }
 }

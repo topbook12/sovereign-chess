@@ -6,10 +6,11 @@
  * Connects to the duel referee service (socket.io via the gateway),
  * mirrors the authoritative room state, and runs the real-money stakes:
  *
- *  - when a duel goes LIVE each device locks its 1 💎 entry stake
+ *  - when a duel goes LIVE each device locks its 3 💎 entry stake
  *    (persisted + idempotent — reconnects can never double-charge);
- *  - the winner pockets the 2 💎 pot, a draw refunds the stake,
- *    a loss consumes it — exactly the Diamond Vault economy;
+ *  - the winner takes the 4 💎 prize (net +1), the loser gets a 1 💎
+ *    consolation credit (net −2), a draw refunds both stakes — and the
+ *    platform keeps a 1 💎 rake from every decided duel (50 taka);
  *  - players without the stake never enter — the Diamond Shop is the way in.
  *
  * Phases: idle → waiting (share code) → live (board) → ended → rematch.
@@ -23,11 +24,14 @@ import { deviceId } from "@/lib/game-store";
 import {
   addDiamonds,
   DUEL_ENTRY_STAKE,
-  DUEL_WIN_POT,
+  DUEL_WIN_PRIZE,
+  DUEL_LOSER_CONSOLATION,
+  DUEL_HOUSE_FEE,
   getBalance,
   markPayoutDone,
   payEntryStake,
   payoutDone,
+  queueWalletRecord,
   type DiamondEntry,
 } from "@/lib/diamonds";
 import { pulse } from "@/lib/haptics";
@@ -114,9 +118,11 @@ export function useDuel({ playerName, onDiamonds }: Options) {
   /**
    * Pay the duel result once — keyed by code+generation and persisted, so
    * even a crash right after checkmate cannot pay twice.
-   *   win  → +DUEL_WIN_POT (the 2 💎 pot)
-   *   draw → +DUEL_ENTRY_STAKE (stake refund)
-   *   loss → nothing (the stake is already consumed)
+   *   win  → +DUEL_WIN_PRIZE (net +1 💎 after the 3 💎 stake)
+   *   draw → +DUEL_ENTRY_STAKE (full refund, no rake)
+   *   loss → +DUEL_LOSER_CONSOLATION (net −2 💎)
+   * and on every decided duel the platform books its 1 💎 rake — a
+   * settlement summary is queued for the owner's central ledger.
    */
   const settleRewards = useCallback((s: DuelStateView) => {
     if (!s.result || !s.myColor) return;
@@ -125,16 +131,42 @@ export function useDuel({ playerName, onDiamonds }: Options) {
     settledRef.current = key;
     const won = s.result.winner === s.myColor;
     const draw = s.result.winner === null;
-    const credit = won ? DUEL_WIN_POT : draw ? DUEL_ENTRY_STAKE : 0;
+    const credit = won
+      ? DUEL_WIN_PRIZE
+      : draw
+        ? DUEL_ENTRY_STAKE
+        : DUEL_LOSER_CONSOLATION;
     if (credit > 0) {
       const entry = addDiamonds(
         credit,
-        draw ? "duel-draw" : "duel-pot",
-        `Duel ${s.code} — ${s.result.reason}`
+        draw ? "duel-draw" : won ? "duel-pot" : "duel-consolation",
+        draw
+          ? `Duel ${s.code} — stake refunded`
+          : won
+            ? `Duel ${s.code} — victory prize (net +1 💎)`
+            : `Duel ${s.code} — consolation credit (net −2 💎)`
       );
       onDiamondsRef.current?.(entry);
     }
     markPayoutDone(s.code, s.gen, credit);
+    // settlement summary for the platform ledger (idempotent per side —
+    // the winner's record carries the house rake)
+    queueWalletRecord({
+      kind: "settlement",
+      id: `duel:${s.code}:g${s.gen}:${s.myColor}`,
+      payload: {
+        scope: "duel",
+        matchId: `${s.code}:g${s.gen}`,
+        code: s.code,
+        gen: s.gen,
+        side: s.myColor,
+        outcome: won ? "win" : draw ? "draw" : "loss",
+        stake: DUEL_ENTRY_STAKE,
+        credit,
+        fee: won ? DUEL_HOUSE_FEE : 0,
+        t: Date.now(),
+      },
+    });
     if (won) {
       pulse("win");
       playSound("win");

@@ -48,7 +48,9 @@ import {
   canWithdraw,
   DIAMOND_TAKA,
   DUEL_ENTRY_STAKE,
-  DUEL_WIN_POT,
+  DUEL_WIN_PRIZE,
+  DUEL_LOSER_CONSOLATION,
+  DUEL_HOUSE_FEE,
   ensureStarter,
   formatTaka,
   getBalance,
@@ -61,6 +63,7 @@ import {
   type DiamondEntry,
   type WithdrawalRequest,
 } from "@/lib/diamonds";
+import { ArcadeSection } from "@/components/arcade/arcade-section";
 import { deviceId } from "@/lib/game-store";
 import { playSound } from "@/lib/sounds";
 import { pulse } from "@/lib/haptics";
@@ -628,11 +631,12 @@ export function DuelView() {
           </h2>
           <p className="mx-auto mt-2 max-w-md text-[13.5px] leading-relaxed text-foreground/60">
             Two real players. One board. Five minutes each. Both lock{" "}
-            <b className="text-cyan-200">{DUEL_ENTRY_STAKE} 💎</b> to enter — the
-            winner pockets the <b className="text-gold-soft">{DUEL_WIN_POT} 💎 pot</b>,
-            a draw refunds the stake. Every diamond is worth{" "}
-            <b className="text-emerald-300">৳{DIAMOND_TAKA}</b> — real, withdrawable
-            money.
+            <b className="text-cyan-200">{DUEL_ENTRY_STAKE} 💎</b> — the winner takes the{" "}
+            <b className="text-gold-soft">{DUEL_WIN_PRIZE} 💎 prize</b>, the loser keeps{" "}
+            <b className="text-emerald-300">{DUEL_LOSER_CONSOLATION} 💎</b> consolation, and
+            the platform&apos;s <b className="text-foreground/75">{DUEL_HOUSE_FEE} 💎</b> fee
+            keeps the arena honest. Every diamond is worth{" "}
+            <b className="text-emerald-300">৳{DIAMOND_TAKA}</b> — real, withdrawable money.
           </p>
 
           {starter && (
@@ -669,7 +673,7 @@ export function DuelView() {
               </p>
               <p className="mt-2 text-[11.5px] text-foreground/40">
                 When the rival arrives, {DUEL_ENTRY_STAKE} 💎 locks per player —
-                the winner takes the {DUEL_WIN_POT} 💎 pot.
+                the winner takes the {DUEL_WIN_PRIZE} 💎 prize, the house keeps {DUEL_HOUSE_FEE} 💎.
               </p>
               <Button
                 variant="outline"
@@ -762,28 +766,35 @@ export function DuelView() {
             <Trophy className="h-5 w-5 text-gold-soft" />
             HOW IT PAYS
           </h3>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {[
               {
-                label: `Win — the ${DUEL_WIN_POT} 💎 pot`,
-                diamonds: DUEL_WIN_POT,
-                taka: (DUEL_WIN_POT - DUEL_ENTRY_STAKE) * DIAMOND_TAKA,
-                sub: `net +${DUEL_WIN_POT - DUEL_ENTRY_STAKE} 💎 after your stake`,
+                label: `Win — ${DUEL_WIN_PRIZE} 💎 prize`,
+                diamonds: DUEL_WIN_PRIZE,
+                taka: (DUEL_WIN_PRIZE - DUEL_ENTRY_STAKE) * DIAMOND_TAKA,
+                sub: `net +${DUEL_WIN_PRIZE - DUEL_ENTRY_STAKE} 💎 after your stake`,
                 cls: "text-gold-soft border-gold/40",
               },
               {
-                label: "Draw — stake back",
+                label: `Loss — ${DUEL_LOSER_CONSOLATION} 💎 consolation`,
+                diamonds: DUEL_LOSER_CONSOLATION,
+                taka: (DUEL_LOSER_CONSOLATION - DUEL_ENTRY_STAKE) * DIAMOND_TAKA,
+                sub: `net −${DUEL_ENTRY_STAKE - DUEL_LOSER_CONSOLATION} 💎 · fight for the rematch`,
+                cls: "text-red-300 border-red-400/40",
+              },
+              {
+                label: "Draw — full refund",
                 diamonds: DUEL_ENTRY_STAKE,
                 taka: 0,
                 sub: "even trade, nothing lost",
                 cls: "text-cyan-200 border-cyan-300/40",
               },
               {
-                label: "Loss — stake spent",
-                diamonds: -DUEL_ENTRY_STAKE,
-                taka: -DUEL_ENTRY_STAKE * DIAMOND_TAKA,
-                sub: "the pot pays the winner",
-                cls: "text-red-300 border-red-400/40",
+                label: `Platform — ${DUEL_HOUSE_FEE} 💎 fee`,
+                diamonds: DUEL_HOUSE_FEE,
+                taka: DUEL_HOUSE_FEE * DIAMOND_TAKA,
+                sub: "the house share of every decided duel",
+                cls: "text-foreground/70 border-white/15",
               },
             ].map((r) => (
               <div key={r.label} className={cn("rounded-xl border bg-white/[0.03] p-3 text-center", r.cls)}>
@@ -793,14 +804,20 @@ export function DuelView() {
                 <p className="mt-1 font-mono text-2xl font-black">
                   {r.diamonds > 0 ? "+" : ""}{r.diamonds} <Gem className="inline h-4 w-4" />
                 </p>
-                <p className="text-[11px] font-bold text-emerald-300">
+                <p className={cn("text-[11px] font-bold", r.taka > 0 ? "text-emerald-300" : r.taka < 0 ? "text-red-300" : "text-foreground/50")}>
                   {r.taka > 0 ? `+${formatTaka(r.taka)}` : r.taka < 0 ? formatTaka(r.taka) : "±৳0"}
                 </p>
                 <p className="mt-0.5 text-[10.5px] text-foreground/40">{r.sub}</p>
               </div>
             ))}
           </div>
+          <p className="mt-3 text-center text-[11px] font-bold text-foreground/40">
+            Pot maths: {DUEL_ENTRY_STAKE} + {DUEL_ENTRY_STAKE} = {DUEL_ENTRY_STAKE * 2} 💎 = {DUEL_WIN_PRIZE} (winner) + {DUEL_LOSER_CONSOLATION} (consolation) + {DUEL_HOUSE_FEE} (platform) ✓
+          </p>
         </section>
+
+        {/* the arcade floor — Ludo · Carrom · Snake, same raked economy */}
+        <ArcadeSection />
 
         <DiamondShop />
 
@@ -957,10 +974,10 @@ export function DuelView() {
               <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-[13px] font-black text-cyan-200">
                 <Gem className="h-4 w-4" />
                 {duelOutcome === "won"
-                  ? `+${DUEL_WIN_POT} 💎 pot · net +${DUEL_WIN_POT - DUEL_ENTRY_STAKE} 💎 (${formatTaka((DUEL_WIN_POT - DUEL_ENTRY_STAKE) * DIAMOND_TAKA)})`
+                  ? `+${DUEL_WIN_PRIZE} 💎 prize · net +${DUEL_WIN_PRIZE - DUEL_ENTRY_STAKE} 💎 (${formatTaka((DUEL_WIN_PRIZE - DUEL_ENTRY_STAKE) * DIAMOND_TAKA)})`
                   : duelOutcome === "draw"
                     ? `stake refunded — ${formatTaka(DUEL_ENTRY_STAKE * DIAMOND_TAKA)} back in your vault`
-                    : `−${DUEL_ENTRY_STAKE} 💎 stake · ${formatTaka(DUEL_ENTRY_STAKE * DIAMOND_TAKA)} went to the pot`}
+                    : `+${DUEL_LOSER_CONSOLATION} 💎 consolation · net −${DUEL_ENTRY_STAKE - DUEL_LOSER_CONSOLATION} 💎 (${formatTaka(-(DUEL_ENTRY_STAKE - DUEL_LOSER_CONSOLATION) * DIAMOND_TAKA)})`}
               </p>
               <div className="mt-4 flex items-center justify-center gap-2">
                 <Button

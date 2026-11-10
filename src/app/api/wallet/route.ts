@@ -9,6 +9,8 @@ import { tursoQuery } from "@/lib/turso";
  *     - kind "order"      → diamond purchase claims (bKash TrxID queue)
  *     - kind "withdrawal" → cash-out claims the owner must settle
  *     - kind "balance"    → latest balance snapshot for the device
+ *     - kind "settlement" → per-match economy summary (stakes, credits and
+ *                           the house's 1 💎 rake — the platform's profit)
  *     Idempotent: INSERT OR IGNORE keyed by the client record id — the
  *     browser retry queue can replay safely after any outage.
  *
@@ -24,7 +26,7 @@ interface IncomingRecord {
   payload?: Record<string, unknown>;
 }
 
-const KINDS = new Set(["order", "withdrawal", "balance"]);
+const KINDS = new Set(["order", "withdrawal", "balance", "settlement"]);
 
 const ENSURE_SQL = [
   `CREATE TABLE IF NOT EXISTS wallet_orders (
@@ -36,6 +38,10 @@ const ENSURE_SQL = [
      taka INTEGER, method TEXT, account TEXT, status TEXT, t INTEGER)`,
   `CREATE TABLE IF NOT EXISTS wallet_balances (
      device_id TEXT PRIMARY KEY, player TEXT, balance INTEGER, t INTEGER)`,
+  `CREATE TABLE IF NOT EXISTS wallet_settlements (
+     id TEXT PRIMARY KEY, device_id TEXT, scope TEXT, match_id TEXT,
+     winner TEXT, outcome TEXT, stake INTEGER, credit INTEGER,
+     fee INTEGER, taka_fee INTEGER, t INTEGER)`,
 ];
 
 const s = (v: unknown, max = 120) =>
@@ -85,6 +91,30 @@ export async function POST(req: NextRequest) {
             n(p.taka), s(p.method, 12), s(p.account, 24), s(p.status, 12), t,
           ],
         });
+      } else if (rec.kind === "settlement" && rec.id) {
+        const p = (rec.payload ?? {}) as {
+          scope?: string;
+          matchId?: string;
+          winner?: number | null;
+          outcome?: string;
+          stake?: number;
+          credit?: number;
+          fee?: number;
+        };
+        stmts.push({
+          sql: `INSERT OR IGNORE INTO wallet_settlements
+                (id, device_id, scope, match_id, winner, outcome, stake,
+                 credit, fee, taka_fee, t)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            s(rec.id, 60), deviceId, s(p.scope, 12), s(p.matchId, 40),
+            p.winner === null || p.winner === undefined
+              ? null
+              : n(p.winner, 9),
+            s(p.outcome, 12), n(p.stake), n(p.credit), n(p.fee),
+            n(p.fee, 10000) * 50, t,
+          ],
+        });
       } else if (rec.kind === "balance") {
         const p = (rec.payload ?? {}) as { player?: string; balance?: number };
         stmts.push({
@@ -126,7 +156,7 @@ export async function GET(req: NextRequest) {
   }
 
   const rows = await tursoQuery(async (c) => {
-    const [orders, withdrawals] = await c.batch(
+    const [orders, withdrawals, settlements] = await c.batch(
       [
         {
           sql: "SELECT id, device_id, player, package_id, diamonds, bonus, taka, method, sender, trx, status, t FROM wallet_orders ORDER BY t DESC LIMIT 200",
@@ -136,12 +166,32 @@ export async function GET(req: NextRequest) {
           sql: "SELECT id, device_id, player, diamonds, taka, method, account, status, t FROM wallet_withdrawals ORDER BY t DESC LIMIT 200",
           args: [],
         },
+        {
+          sql: "SELECT id, device_id, scope, match_id, winner, outcome, stake, credit, fee, taka_fee, t FROM wallet_settlements ORDER BY t DESC LIMIT 400",
+          args: [],
+        },
       ],
       "read"
     );
-    return { orders: orders?.rows ?? [], withdrawals: withdrawals?.rows ?? [] };
+    const feeRows = (settlements?.rows ?? []) as Record<string, unknown>[];
+    const houseFee = feeRows.reduce((sum, r) => sum + Number(r.fee ?? 0), 0);
+    return {
+      orders: orders?.rows ?? [],
+      withdrawals: withdrawals?.rows ?? [],
+      settlements: settlements?.rows ?? [],
+      houseFeeDiamonds: houseFee,
+      houseFeeTaka: houseFee * 50,
+    };
   });
 
-  if (!rows) return NextResponse.json({ ok: false, orders: [], withdrawals: [] });
+  if (!rows)
+    return NextResponse.json({
+      ok: false,
+      orders: [],
+      withdrawals: [],
+      settlements: [],
+      houseFeeDiamonds: 0,
+      houseFeeTaka: 0,
+    });
   return NextResponse.json({ ok: true, ...rows });
 }

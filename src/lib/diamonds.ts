@@ -1,30 +1,37 @@
 /**
- * Sovereign Chess — the Diamond Vault (v2, real-money economy).
+ * Sovereign Chess — the Diamond Vault (v3, raked real-money economy).
  *
- * Diamonds are the wager currency of Live Duels with REAL taka value:
+ * Diamonds are the wager currency of Live Duels with REAL taka value.
+ * Every decided duel runs through the house rake — the platform keeps a
+ * guaranteed share of every pot, winners and losers play for the rest:
  *
- *   entry stake  −1 💎  every player locks 1 💎 when the duel goes live
- *   win          +2 💎  the winner pockets the full 2 💎 pot (net +1 💎 = +৳50)
- *   draw         +1 💎  stake refunded to both (net 0)
- *   loss          0     the stake is consumed — the pot goes to the winner
- *   starter      +5 💎  one-time welcome grant so every new player can duel
+ *   entry stake  −3 💎  every player locks 3 💎 when the duel goes live
+ *   win          +4 💎  winner's prize (net +1 💎 = +৳50)
+ *   loss         +1 💎  consolation credit (net −2 💎 = −৳100)
+ *   draw         +3 💎  stake refunded to both (net 0, no fee)
+ *   platform      1 💎  the house's share of every decided duel (৳50)
+ *
+ *   pot check: 3 + 3 = 6 = 4 (winner) + 1 (consolation) + 1 (platform) ✓
+ *   starter      +6 💎  one-time welcome grant — two full duels, free
  *   purchase     +n 💎  shop order verified by the platform owner (bKash)
  *   withdraw     −n 💎  cash-out → the owner sends taka via bKash / Nagad
  *
  *   1 💎 = ৳50 — shown everywhere, withdrawable, buyable.
  *
  * The ledger lives ON-DEVICE (localStorage) as the player's authoritative
- * copy — every entry is timestamped and exportable. Orders, cash-out claims
- * and a balance snapshot are ALSO pushed to the platform ledger (Turso) via
- * a persistent retry queue, so the owner always sees every wallet event,
- * even ones made offline. Zero polling, tiny payloads, never lost.
+ * copy — every entry is timestamped and exportable. Orders, cash-out claims,
+ * settlement summaries and a balance snapshot are ALSO pushed to the
+ * platform ledger (Turso) via a persistent retry queue, so the owner always
+ * sees every wallet event — including the house's rake — even offline.
  */
 
 export const DIAMOND_TAKA = 50;
-export const DUEL_ENTRY_STAKE = 1;
-export const DUEL_WIN_POT = 2; // winner pockets the pot (both stakes)
+export const DUEL_ENTRY_STAKE = 3;
+export const DUEL_WIN_PRIZE = 4; // winner's prize credit (net +1)
+export const DUEL_LOSER_CONSOLATION = 1; // loser's consolation (net −2)
+export const DUEL_HOUSE_FEE = 1; // platform share of every decided duel
 export const MIN_WITHDRAW_DIAMONDS = 5;
-export const STARTER_DIAMONDS = 5;
+export const STARTER_DIAMONDS = 6;
 
 /**
  * The platform's bKash merchant/personal number for diamond purchases.
@@ -55,6 +62,7 @@ export type DiamondReason =
   | "duel-pot"
   | "duel-draw"
   | "duel-win"
+  | "duel-consolation"
   | "duel-play"
   | "purchase"
   | "withdraw"
