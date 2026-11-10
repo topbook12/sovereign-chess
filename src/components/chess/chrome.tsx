@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   BookOpen,
   Bot,
@@ -31,6 +32,7 @@ import type { AppTab } from "@/components/chess/bottom-nav";
 import { useCareer } from "@/hooks/use-career";
 import { usePwaStore } from "@/lib/pwa-store";
 import { dateKey } from "@/lib/career";
+import { DIAMOND_EVENT, getBalance } from "@/lib/diamonds";
 import { cn } from "@/lib/utils";
 
 /* ---------------- Aurora background ---------------- */
@@ -57,6 +59,18 @@ const NAV_ITEMS: { id: AppTab; label: string; icon: React.ReactNode }[] = [
   { id: "career", label: "Career", icon: <Trophy className="h-3.5 w-3.5" /> },
 ];
 
+/** live diamond balance for the header chip (updates on every vault event) */
+function useDiamondBalance(): number {
+  const [balance, setBalance] = useState(0);
+  useEffect(() => {
+    const refresh = () => setBalance(getBalance());
+    refresh();
+    window.addEventListener(DIAMOND_EVENT, refresh);
+    return () => window.removeEventListener(DIAMOND_EVENT, refresh);
+  }, []);
+  return balance;
+}
+
 export function Header({
   game,
   tab,
@@ -72,6 +86,7 @@ export function Header({
 }) {
   const career = useCareer();
   const offline = usePwaStore((s) => s.offline);
+  const diamonds = useDiamondBalance();
   const trainedToday = career.lastActiveDate === dateKey();
 
   return (
@@ -129,6 +144,20 @@ export function Header({
               Offline
             </span>
           )}
+
+          {/* -------- diamond wallet chip -------- */}
+          <button
+            type="button"
+            onClick={() => onTab("duel")}
+            aria-label={`Diamond balance ${diamonds} — open the Live Duel vault`}
+            className="flex items-center gap-1.5 rounded-full border border-cyan-300/35 bg-gradient-to-b from-cyan-300/15 to-transparent px-3 py-1.5 text-xs transition-colors hover:border-cyan-300/70"
+          >
+            <Gem className="h-3.5 w-3.5 text-cyan-300" />
+            <b className="font-mono text-cyan-200">{diamonds}</b>
+            <span className="hidden text-[9px] font-bold uppercase tracking-[0.18em] text-foreground/40 md:inline">
+              ৳{diamonds * 50}
+            </span>
+          </button>
 
           {/* -------- career chips -------- */}
           <div className="hidden items-center gap-1.5 sm:flex">

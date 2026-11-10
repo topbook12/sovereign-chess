@@ -5,8 +5,11 @@
  *  - two real players race in real time from two devices;
  *  - every move is validated here with full chess.js rules;
  *  - Fischer clocks (5+0) tick server-side — no client can cheat time;
- *  - when the duel ends the service declares DIAMONDS:
- *      winner 2 💎 · loser 1 💎 · draw 1 💎 each   (1 💎 = ৳50 real value);
+ *  - REAL-MONEY STAKES (client-side Diamond Vault): each device locks a
+ *    1 💎 entry stake when the duel goes live, and this service declares
+ *    the pot — winner 2 💎 · draw refund 1 💎 each · loser consumed;
+ *    every rematch bumps the room generation (gen) so a fresh stake
+ *    locks for the fresh game;
  *  - 90s reconnect grace, rematch with swapped colors, 30min room cleanup.
  *
  * Zero database — in-memory rooms only (cost-effective by design).
@@ -50,6 +53,8 @@ interface DuelResult {
 
 interface Room {
   code: string;
+  /** game generation — increments on every rematch (new stake, new pot) */
+  gen: number;
   seats: { w: Seat | null; b: Seat | null };
   game: Chess;
   clocks: { w: number; b: number };
@@ -99,6 +104,7 @@ function roomState(room: Room, myColor: Side | null) {
   const last = hist.length > 0 ? hist[hist.length - 1] : null;
   return {
     code: room.code,
+    gen: room.gen,
     status: room.status,
     myColor,
     turn: room.game.turn(),
@@ -141,11 +147,12 @@ function endRoom(room: Room, winner: Side | null, reason: string) {
   if (room.status === "ended") return;
   room.status = "ended";
   room.running = false;
-  // winner 2 💎 · loser 1 💎 · draw 1 💎 each — the duel always pays
+  // the pot: winner pockets both stakes (2 💎) · draw refunds 1 💎 each ·
+  // the loser's stake is consumed — that is the real-money economy
   room.result = {
     winner,
     reason,
-    rewards: winner === null ? { w: 1, b: 1 } : { [winner]: 2, [other(winner)]: 1 },
+    rewards: winner === null ? { w: 1, b: 1 } : { [winner]: 2, [other(winner)]: 0 },
   };
   for (const side of ["w", "b"] as Side[]) {
     const seat = room.seats[side];
@@ -205,6 +212,7 @@ io.on("connection", (socket) => {
     if (existing) leaveSeat(existing.room, existing.side, socket.id);
     const room: Room = {
       code: makeCode(),
+      gen: 0,
       seats: {
         w: { socketId: socket.id, deviceId, name: name || "White", connected: true, graceTimer: null },
         b: null,
@@ -316,10 +324,11 @@ io.on("connection", (socket) => {
     if (!side) return;
     room.rematch.add(side);
     if (room.rematch.size === 2) {
-      // swap colors, reset everything, go live again
+      // swap colors, bump the generation (new stake + pot), go live again
       const w = room.seats.w;
       room.seats.w = room.seats.b;
       room.seats.b = w;
+      room.gen += 1;
       room.game = new Chess();
       room.clocks = { w: TIME_CONTROL_MS, b: TIME_CONTROL_MS };
       room.running = true;

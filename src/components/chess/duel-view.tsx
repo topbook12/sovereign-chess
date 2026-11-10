@@ -5,11 +5,14 @@
  *
  *  - create a duel → share the 5-letter code → the rival joins from any device;
  *  - the server referees: validated moves, 5+0 Fischer clocks, reconnection grace;
- *  - the winner pockets 2 💎, the loser still earns 1 💎 (1 💎 = ৳50);
- *  - the Diamond Vault below converts every duel into withdrawable value.
+ *  - REAL STAKES: 1 💎 entry per player — the winner pockets the 2 💎 pot,
+ *    a draw refunds, a loss consumes the stake (1 💎 = ৳50 real value);
+ *  - new players get 5 💎 starter diamonds; out of diamonds? the Diamond
+ *    Shop sells top-ups (bKash / Nagad / Rocket) and the Vault cashes out.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import confetti from "canvas-confetti";
 import { Chess, type Color, type PieceSymbol, type Square } from "chess.js";
 import {
   BadgeCheck,
@@ -21,6 +24,7 @@ import {
   Loader2,
   LogOut,
   RefreshCw,
+  ShoppingCart,
   Swords,
   Timer,
   Trophy,
@@ -28,6 +32,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { ChessBoard } from "@/components/chess/board";
+import { DiamondShop } from "@/components/chess/diamond-shop";
 import { useDuel, legalOnClient, type DuelSide, type DuelStateView } from "@/hooks/use-duel";
 import { StatusStrip } from "@/components/chess/chrome";
 import { Button } from "@/components/ui/button";
@@ -39,18 +44,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  addDiamonds,
   balanceTaka,
   canWithdraw,
   DIAMOND_TAKA,
-  DUEL_PLAY_DIAMONDS,
-  DUEL_WIN_DIAMONDS,
+  DUEL_ENTRY_STAKE,
+  DUEL_WIN_POT,
+  ensureStarter,
+  formatTaka,
   getBalance,
   getLedger,
   getWithdrawals,
   DIAMOND_EVENT,
   MIN_WITHDRAW_DIAMONDS,
   requestWithdrawal,
+  STARTER_DIAMONDS,
   type DiamondEntry,
   type WithdrawalRequest,
 } from "@/lib/diamonds";
@@ -101,8 +108,6 @@ function fmtClock(ms: number): string {
   const s = Math.max(0, Math.ceil(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
-
-const formatTaka = (n: number) => `৳${n.toLocaleString("en-IN")}`;
 
 /* ================================================================== */
 /* clock chip                                                         */
@@ -205,9 +210,13 @@ function DuelStrip({
 /* ================================================================== */
 
 const REASON_LABEL: Record<DiamondEntry["reason"], string> = {
+  starter: "Welcome bonus",
+  "duel-stake": "Duel entry stake",
+  "duel-pot": "Duel pot won",
   "duel-win": "Duel won",
   "duel-play": "Duel played",
-  "duel-draw": "Duel drawn",
+  "duel-draw": "Duel stake refunded",
+  purchase: "Shop purchase",
   withdraw: "Cash-out",
   adjust: "Adjustment",
 };
@@ -332,7 +341,7 @@ function DiamondVault({ player }: { player: string }) {
         <ul className="scroll-slim mt-2 max-h-44 space-y-1.5 overflow-y-auto pr-1">
           {ledger.length === 0 && (
             <li className="rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2.5 text-[12px] text-foreground/45">
-              No diamonds yet — win a Live Duel to open the vault.
+              Every diamond lands here — stakes, pots, bonuses and cash-outs.
             </li>
           )}
           {ledger.map((e) => (
@@ -483,7 +492,32 @@ export function DuelView() {
   const [pendingPromotion, setPendingPromotion] = useState<{ from: Square; to: Square } | null>(null);
   const [selected, setSelected] = useState<Square | null>(null);
   const [copied, setCopied] = useState(false);
+  const [balance, setBalance] = useState(0);
+  const [starter, setStarter] = useState<DiamondEntry | null>(null);
   const lastMoveRef = useRef<string | null>(null);
+
+  /* starter welcome grant (one-time, first ever visit) + live balance */
+  useEffect(() => {
+    const granted = ensureStarter();
+    const r = granted ? requestAnimationFrame(() => setStarter(granted)) : 0;
+    if (granted) {
+      confetti({
+        particleCount: 140,
+        spread: 105,
+        origin: { y: 0.28 },
+        colors: ["#67e8f9", "#e9c96b", "#38e0af", "#fdf6dc"],
+      });
+      playSound("achievement");
+      window.setTimeout(() => setStarter(null), 10_000);
+    }
+    const refresh = () => setBalance(getBalance());
+    refresh();
+    window.addEventListener(DIAMOND_EVENT, refresh);
+    return () => {
+      if (r) cancelAnimationFrame(r);
+      window.removeEventListener(DIAMOND_EVENT, refresh);
+    };
+  }, []);
 
   const duel = useDuel({
     playerName,
@@ -593,11 +627,20 @@ export function DuelView() {
             <span className="text-gold-gradient">Live Duel</span>
           </h2>
           <p className="mx-auto mt-2 max-w-md text-[13.5px] leading-relaxed text-foreground/60">
-            Two real players. One board. Five minutes each. Every duel pays{" "}
-            <b className="text-cyan-200">{DUEL_WIN_DIAMONDS} 💎</b> to the winner and{" "}
-            <b className="text-cyan-200">{DUEL_PLAY_DIAMONDS} 💎</b> to the fighter who
-            tried — each diamond is worth <b className="text-emerald-300">৳{DIAMOND_TAKA}</b>.
+            Two real players. One board. Five minutes each. Both lock{" "}
+            <b className="text-cyan-200">{DUEL_ENTRY_STAKE} 💎</b> to enter — the
+            winner pockets the <b className="text-gold-soft">{DUEL_WIN_POT} 💎 pot</b>,
+            a draw refunds the stake. Every diamond is worth{" "}
+            <b className="text-emerald-300">৳{DIAMOND_TAKA}</b> — real, withdrawable
+            money.
           </p>
+
+          {starter && (
+            <p className="mx-auto mt-3 max-w-sm rounded-xl border border-cyan-300/40 bg-cyan-300/10 px-4 py-2.5 text-[13px] font-bold text-cyan-100">
+              🎉 স্বাগতম! {STARTER_DIAMONDS} 💎 starter diamonds added — your
+              first duels are on the house.
+            </p>
+          )}
 
           {phase === "waiting" && state ? (
             /* ---------------- waiting room ---------------- */
@@ -624,6 +667,10 @@ export function DuelView() {
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-gold-soft" />
                 Waiting for a rival to join — they open Sovereign → Duel → Join.
               </p>
+              <p className="mt-2 text-[11.5px] text-foreground/40">
+                When the rival arrives, {DUEL_ENTRY_STAKE} 💎 locks per player —
+                the winner takes the {DUEL_WIN_POT} 💎 pot.
+              </p>
               <Button
                 variant="outline"
                 onClick={duel.leave}
@@ -637,6 +684,31 @@ export function DuelView() {
             <div className="mt-8 flex items-center justify-center gap-2 text-gold-soft">
               <Loader2 className="h-5 w-5 animate-spin" />
               <span className="text-[13px] font-semibold">Opening the arena…</span>
+            </div>
+          ) : balance < DUEL_ENTRY_STAKE ? (
+            /* -------- vault too light — the shop is the way back in -------- */
+            <div className="mx-auto mt-6 w-full max-w-sm rounded-2xl border border-amber-400/35 bg-amber-400/10 p-5 text-center">
+              <Gem className="mx-auto h-7 w-7 text-amber-300" />
+              <p className="mt-2 text-[15px] font-black text-amber-200">
+                Not enough diamonds to duel
+              </p>
+              <p className="mt-1 text-[12.5px] leading-relaxed text-foreground/60">
+                Every duel locks a {DUEL_ENTRY_STAKE} 💎 entry stake — that is
+                the real-money game. Top up your vault in the Diamond Shop
+                below, then come back and take the crown.
+              </p>
+              <Button
+                onClick={() => {
+                  pulse("tick");
+                  document
+                    .getElementById("diamond-shop")
+                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+                className="mt-4 h-12 w-full border border-[#8a6a24]/50 bg-gradient-to-b from-[#ecca6f] to-[#c69c3f] text-[14px] font-black text-[#241a05] hover:from-[#f3d887]"
+              >
+                <ShoppingCart className="mr-2 h-4.5 w-4.5" />
+                Open the Diamond Shop
+              </Button>
             </div>
           ) : (
             /* ---------------- create / join ---------------- */
@@ -692,22 +764,45 @@ export function DuelView() {
           </h3>
           <div className="mt-3 grid gap-2 sm:grid-cols-3">
             {[
-              { label: "Winner", diamonds: DUEL_WIN_DIAMONDS, taka: DUEL_WIN_DIAMONDS * DIAMOND_TAKA, cls: "text-gold-soft border-gold/40" },
-              { label: "Fighter", diamonds: DUEL_PLAY_DIAMONDS, taka: DUEL_PLAY_DIAMONDS * DIAMOND_TAKA, cls: "text-emerald-300 border-emerald-400/40" },
-              { label: "Draw — each", diamonds: DUEL_PLAY_DIAMONDS, taka: DUEL_PLAY_DIAMONDS * DIAMOND_TAKA, cls: "text-cyan-200 border-cyan-300/40" },
+              {
+                label: `Win — the ${DUEL_WIN_POT} 💎 pot`,
+                diamonds: DUEL_WIN_POT,
+                taka: (DUEL_WIN_POT - DUEL_ENTRY_STAKE) * DIAMOND_TAKA,
+                sub: `net +${DUEL_WIN_POT - DUEL_ENTRY_STAKE} 💎 after your stake`,
+                cls: "text-gold-soft border-gold/40",
+              },
+              {
+                label: "Draw — stake back",
+                diamonds: DUEL_ENTRY_STAKE,
+                taka: 0,
+                sub: "even trade, nothing lost",
+                cls: "text-cyan-200 border-cyan-300/40",
+              },
+              {
+                label: "Loss — stake spent",
+                diamonds: -DUEL_ENTRY_STAKE,
+                taka: -DUEL_ENTRY_STAKE * DIAMOND_TAKA,
+                sub: "the pot pays the winner",
+                cls: "text-red-300 border-red-400/40",
+              },
             ].map((r) => (
               <div key={r.label} className={cn("rounded-xl border bg-white/[0.03] p-3 text-center", r.cls)}>
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-foreground/45">
                   {r.label}
                 </p>
                 <p className="mt-1 font-mono text-2xl font-black">
-                  +{r.diamonds} <Gem className="inline h-4 w-4" />
+                  {r.diamonds > 0 ? "+" : ""}{r.diamonds} <Gem className="inline h-4 w-4" />
                 </p>
-                <p className="text-[11px] font-bold text-emerald-300">{formatTaka(r.taka)}</p>
+                <p className="text-[11px] font-bold text-emerald-300">
+                  {r.taka > 0 ? `+${formatTaka(r.taka)}` : r.taka < 0 ? formatTaka(r.taka) : "±৳0"}
+                </p>
+                <p className="mt-0.5 text-[10.5px] text-foreground/40">{r.sub}</p>
               </div>
             ))}
           </div>
         </section>
+
+        <DiamondShop />
 
         <DiamondVault player={playerName} />
       </div>
@@ -718,6 +813,14 @@ export function DuelView() {
 
   const me = state.myColor ? state.seats[state.myColor] : null;
   const opp = state.myColor ? state.seats[state.myColor === "w" ? "b" : "w"] : null;
+  const duelOutcome =
+    state.result && myColor
+      ? state.result.winner === null
+        ? "draw"
+        : state.result.winner === myColor
+          ? "won"
+          : "lost"
+      : null;
 
   /* ---------------- live / ended arena ---------------- */
   return (
@@ -853,8 +956,11 @@ export function DuelView() {
               </p>
               <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-[13px] font-black text-cyan-200">
                 <Gem className="h-4 w-4" />
-                +{state.result.rewards[myColor ?? "w"]} 💎 earned ·{" "}
-                {formatTaka(state.result.rewards[myColor ?? "w"] * DIAMOND_TAKA)} value
+                {duelOutcome === "won"
+                  ? `+${DUEL_WIN_POT} 💎 pot · net +${DUEL_WIN_POT - DUEL_ENTRY_STAKE} 💎 (${formatTaka((DUEL_WIN_POT - DUEL_ENTRY_STAKE) * DIAMOND_TAKA)})`
+                  : duelOutcome === "draw"
+                    ? `stake refunded — ${formatTaka(DUEL_ENTRY_STAKE * DIAMOND_TAKA)} back in your vault`
+                    : `−${DUEL_ENTRY_STAKE} 💎 stake · ${formatTaka(DUEL_ENTRY_STAKE * DIAMOND_TAKA)} went to the pot`}
               </p>
               <div className="mt-4 flex items-center justify-center gap-2">
                 <Button

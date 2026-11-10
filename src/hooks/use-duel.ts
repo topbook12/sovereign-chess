@@ -4,8 +4,13 @@
  * useDuel — the Live Duel state machine.
  *
  * Connects to the duel referee service (socket.io via the gateway),
- * mirrors the authoritative room state, and pays diamonds through the
- * on-device Diamond Vault when the referee declares the result.
+ * mirrors the authoritative room state, and runs the real-money stakes:
+ *
+ *  - when a duel goes LIVE each device locks its 1 💎 entry stake
+ *    (persisted + idempotent — reconnects can never double-charge);
+ *  - the winner pockets the 2 💎 pot, a draw refunds the stake,
+ *    a loss consumes it — exactly the Diamond Vault economy;
+ *  - players without the stake never enter — the Diamond Shop is the way in.
  *
  * Phases: idle → waiting (share code) → live (board) → ended → rematch.
  * A dropped connection re-joins the same seat automatically.
@@ -17,8 +22,12 @@ import { Chess } from "chess.js";
 import { deviceId } from "@/lib/game-store";
 import {
   addDiamonds,
-  DUEL_PLAY_DIAMONDS,
-  DUEL_WIN_DIAMONDS,
+  DUEL_ENTRY_STAKE,
+  DUEL_WIN_POT,
+  getBalance,
+  markPayoutDone,
+  payEntryStake,
+  payoutDone,
   type DiamondEntry,
 } from "@/lib/diamonds";
 import { pulse } from "@/lib/haptics";
@@ -35,6 +44,8 @@ export interface DuelResultView {
 
 export interface DuelStateView {
   code: string;
+  /** game generation inside the room — rematches bump it (stake per game) */
+  gen: number;
   status: "waiting" | "live" | "ended";
   myColor: DuelSide | null;
   turn: "w" | "b";
@@ -65,7 +76,8 @@ export function useDuel({ playerName, onDiamonds }: Options) {
   const [state, setState] = useState<DuelStateView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
-  const settledRef = useRef<string | null>(null); // code+resultKey already paid
+  const settledRef = useRef<string | null>(null); // code+gen payout in memory
+  const prevStatusRef = useRef<string | null>(null);
 
   const nameRef = useRef(playerName);
   const onDiamondsRef = useRef(onDiamonds);
@@ -74,21 +86,55 @@ export function useDuel({ playerName, onDiamonds }: Options) {
     onDiamondsRef.current = onDiamonds;
   });
 
-  /** pay the duel once — keyed by code + winner + final ply (idempotent) */
+  /**
+   * Lock the entry stake the moment a duel goes live — every generation
+   * (rematch) is a fresh duel with a fresh stake. Persisted on-device, so
+   * page refreshes and reconnects never double-charge.
+   */
+  const chargeStake = useCallback((s: DuelStateView) => {
+    if (prevStatusRef.current === "live") return;
+    prevStatusRef.current = "live";
+    if (!s.myColor) return;
+    const res = payEntryStake(s.code, s.gen);
+    if ("error" in res) {
+      setError(res.error);
+      pulse("illegal");
+      // cannot cover the stake — leave the arena immediately
+      socketRef.current?.emit("duel:leave", {
+        code: s.code,
+        deviceId: deviceId(),
+      });
+      setState(null);
+      setPhase("idle");
+      return;
+    }
+    onDiamondsRef.current?.(res.entry);
+  }, []);
+
+  /**
+   * Pay the duel result once — keyed by code+generation and persisted, so
+   * even a crash right after checkmate cannot pay twice.
+   *   win  → +DUEL_WIN_POT (the 2 💎 pot)
+   *   draw → +DUEL_ENTRY_STAKE (stake refund)
+   *   loss → nothing (the stake is already consumed)
+   */
   const settleRewards = useCallback((s: DuelStateView) => {
     if (!s.result || !s.myColor) return;
-    const key = `${s.code}-${s.result.winner ?? "draw"}-${s.ply}`;
-    if (settledRef.current === key) return;
+    const key = `${s.code}:g${s.gen}`;
+    if (settledRef.current === key || payoutDone(s.code, s.gen)) return;
     settledRef.current = key;
-    const mine = s.result.rewards[s.myColor];
-    if (mine <= 0) return;
     const won = s.result.winner === s.myColor;
     const draw = s.result.winner === null;
-    const entry = addDiamonds(
-      mine,
-      draw ? "duel-draw" : won ? "duel-win" : "duel-play",
-      `Duel ${s.code} — ${s.result.reason}`
-    );
+    const credit = won ? DUEL_WIN_POT : draw ? DUEL_ENTRY_STAKE : 0;
+    if (credit > 0) {
+      const entry = addDiamonds(
+        credit,
+        draw ? "duel-draw" : "duel-pot",
+        `Duel ${s.code} — ${s.result.reason}`
+      );
+      onDiamondsRef.current?.(entry);
+    }
+    markPayoutDone(s.code, s.gen, credit);
     if (won) {
       pulse("win");
       playSound("win");
@@ -98,7 +144,6 @@ export function useDuel({ playerName, onDiamonds }: Options) {
       pulse("lose");
       playSound("lose");
     }
-    onDiamondsRef.current?.(entry);
   }, []);
 
   /** one lazily-created socket, shared by every action */
@@ -129,9 +174,13 @@ export function useDuel({ playerName, onDiamonds }: Options) {
       if (s.status === "waiting") setPhase("waiting");
       if (s.status === "live") {
         setPhase("live");
+        chargeStake(s);
         pulse("move");
+      } else {
+        prevStatusRef.current = s.status;
       }
       if (s.status === "ended") setPhase("ended");
+      if (s.status === "ended") settleRewards(s);
     });
 
     socket.on("duel:ended", ({ state: s }: { state: DuelStateView }) => {
@@ -152,11 +201,18 @@ export function useDuel({ playerName, onDiamonds }: Options) {
     });
 
     return socket;
-  }, [settleRewards]);
+  }, [chargeStake, settleRewards]);
 
   /* -------- actions -------- */
 
   const createDuel = useCallback(() => {
+    if (getBalance() < DUEL_ENTRY_STAKE) {
+      setError(
+        `You need ${DUEL_ENTRY_STAKE} 💎 to enter a duel — top up in the Diamond Shop below.`
+      );
+      pulse("illegal");
+      return;
+    }
     setError(null);
     setPhase("connecting");
     ensureSocket().emit("duel:create", {
@@ -168,6 +224,13 @@ export function useDuel({ playerName, onDiamonds }: Options) {
   const joinDuel = useCallback(
     (code: string) => {
       if (!code.trim()) return;
+      if (getBalance() < DUEL_ENTRY_STAKE) {
+        setError(
+          `You need ${DUEL_ENTRY_STAKE} 💎 to enter a duel — top up in the Diamond Shop below.`
+        );
+        pulse("illegal");
+        return;
+      }
       setError(null);
       setPhase("connecting");
       ensureSocket().emit("duel:join", {
@@ -202,6 +265,13 @@ export function useDuel({ playerName, onDiamonds }: Options) {
 
   const rematch = useCallback(() => {
     if (!state) return;
+    if (getBalance() < DUEL_ENTRY_STAKE) {
+      setError(
+        `A rematch costs ${DUEL_ENTRY_STAKE} 💎 — top up in the Diamond Shop below.`
+      );
+      pulse("illegal");
+      return;
+    }
     ensureSocket().emit("duel:rematch", { code: state.code, deviceId: deviceId() });
   }, [ensureSocket, state]);
 

@@ -23,6 +23,7 @@ import { AuroraBackground, Footer, Header } from "@/components/chess/chrome";
 import { BottomNav, type AppTab } from "@/components/chess/bottom-nav";
 import { type StoredGame, loadRecentGames } from "@/lib/game-store";
 import { fetchCloudGameCount, flushQueue } from "@/lib/cloud";
+import { flushWalletQueue } from "@/lib/diamonds";
 import { serializeGame } from "@/lib/chess-utils";
 import { setPlatformTotals } from "@/lib/career";
 import { pulse } from "@/lib/haptics";
@@ -42,11 +43,13 @@ export default function Home() {
   const [focusMode, setFocusMode] = useState(false);
   const archiveRef = useRef<Map<string, StoredGame>>(new Map());
 
-  // cloud boot — drain any queued games + refresh the archive counter once,
-  // after the page has painted (fire-and-forget; the app never depends on it)
+  // cloud boot — drain any queued games + wallet records + refresh the
+  // archive counter once, after the page has painted (fire-and-forget;
+  // the app never depends on it)
   useEffect(() => {
     const t = window.setTimeout(() => {
       void flushQueue();
+      void flushWalletQueue();
       void fetchCloudGameCount();
     }, 2600);
     return () => window.clearTimeout(t);
