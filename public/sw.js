@@ -11,7 +11,7 @@
  *  - API routes are NEVER cached — user data lives on-device first.
  */
 
-const VERSION = "v1.4.0";
+const VERSION = "v1.5.0";
 const STATIC_CACHE = `sovereign-static-${VERSION}`;
 const PAGE_CACHE = `sovereign-pages-${VERSION}`;
 const OWNED = [STATIC_CACHE, PAGE_CACHE];
@@ -77,18 +77,24 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 2) Static assets — stale-while-revalidate (instant + self-healing)
+  // 2) App chunks — NETWORK-FIRST (a reload must never run one-version-old
+  //    game code; the cache fallback keeps the PWA alive offline)
+  if (pathname.startsWith("/_next/static/")) {
+    event.respondWith(networkFirst(req, STATIC_CACHE));
+    return;
+  }
+
+  // 3) Own immutable-ish assets — stale-while-revalidate (instant + self-healing)
   if (isStaticAsset(url.pathname, req.destination)) {
     event.respondWith(staleWhileRevalidate(req, STATIC_CACHE));
     return;
   }
 
-  // 3) Everything else (RSC payloads, prefetches) — plain network
+  // 4) Everything else (RSC payloads, prefetches) — plain network
 });
 
 function isStaticAsset(pathname, destination) {
   return (
-    pathname.startsWith("/_next/static/") ||
     pathname.startsWith("/icons/") ||
     pathname === "/favicon.svg" ||
     pathname === "/logo.svg" ||

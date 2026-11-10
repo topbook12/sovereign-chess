@@ -2,7 +2,7 @@
 
 /**
  * ArcadeSection — the Stake Arena's arcade floor: Ludo, Carrom and the
- * Snake Duel, two players on one device, real diamond stakes.
+ * Snake Arena, two players on one device, real diamond stakes.
  *
  * Economy (per decided match):
  *   both players lock 3 💎 · winner +4 💎 (net +1) · loser +1 💎
@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   BadgeCheck,
   Crown,
@@ -31,7 +32,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { LudoGame } from "@/components/arcade/ludo";
 import { CarromGame } from "@/components/arcade/carrom";
-import { SnakeDuelGame } from "@/components/arcade/snake-duel";
+import { SnakeArenaGame } from "@/components/arcade/snake-arena";
 import {
   ARCADE_CONSOLATION,
   ARCADE_ENTRY,
@@ -81,8 +82,8 @@ const GAMES: {
   },
   {
     key: "snake",
-    title: "Snake Duel",
-    tagline: "Same seed, same food — pure skill.",
+    title: "Snake Arena",
+    tagline: "Slither the deep — feast, boost, outscore.",
     emoji: "🐍",
     ring: "hover:border-gold/60",
   },
@@ -514,8 +515,16 @@ export function ArcadeSection() {
   const [settlement, setSettlement] = useState<ArcadeSettlement | null>(null);
   const [practiceNote, setPracticeNote] = useState<string | null>(null);
   const [gateError, setGateError] = useState<string | null>(null);
+  const [portalReady, setPortalReady] = useState(false);
   const accountsRef = useRef<[ArcadeAccount, ArcadeAccount] | null>(null);
   const matchRef = useRef<ActiveMatch | null>(null);
+
+  // overlays portal to document.body so the app chrome (header / footer /
+  // bottom nav, all z-10+) can never bleed over the arena
+  useEffect(() => {
+    const r = requestAnimationFrame(() => setPortalReady(true));
+    return () => cancelAnimationFrame(r);
+  }, []);
 
   useEffect(() => {
     const refresh = () => {
@@ -764,48 +773,59 @@ export function ArcadeSection() {
         </div>
       )}
 
-      {/* ---------------- game overlay ---------------- */}
-      {match && (
-        <div className="fixed inset-0 z-[70] flex flex-col bg-background/[0.985] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-5">
-          <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col">
-            {match.key === "ludo" && <LudoGame {...gameProps(match)} />}
-            {match.key === "carrom" && <CarromGame {...gameProps(match)} />}
-            {match.key === "snake" && <SnakeDuelGame {...gameProps(match)} />}
-          </div>
-        </div>
-      )}
+      {/* ---------------- game overlay (portaled above all chrome) -------- */}
+      {portalReady &&
+        match &&
+        createPortal(
+          <div className="fixed inset-0 z-[70] flex flex-col bg-background px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-5">
+            <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col">
+              {match.key === "ludo" && <LudoGame key={match.matchId} {...gameProps(match)} />}
+              {match.key === "carrom" && <CarromGame key={match.matchId} {...gameProps(match)} />}
+              {match.key === "snake" && <SnakeArenaGame key={match.matchId} {...gameProps(match)} />}
+            </div>
+          </div>,
+          document.body
+        )}
 
-      {/* practice result toast-card */}
-      {practiceNote && !match && (
-        <div className="fixed inset-x-4 bottom-24 z-[72] mx-auto max-w-sm rounded-xl border border-gold/40 bg-black/85 px-4 py-3 text-center backdrop-blur-md">
-          <p className="text-[13px] font-black text-gold-soft">
-            <Trophy className="mr-1.5 inline h-4 w-4" />
-            {practiceNote}
-          </p>
-          <button
-            type="button"
-            onClick={() => setPracticeNote(null)}
-            className="mt-1 text-[11px] font-bold text-foreground/50 underline-offset-2 hover:underline"
-          >
-            dismiss
-          </button>
-        </div>
-      )}
+      {/* practice result toast-card (portaled above the nav) */}
+      {portalReady &&
+        practiceNote &&
+        !match &&
+        createPortal(
+          <div className="fixed inset-x-4 bottom-28 z-[72] mx-auto max-w-sm rounded-xl border border-gold/40 bg-black/85 px-4 py-3 text-center backdrop-blur-md">
+            <p className="text-[13px] font-black text-gold-soft">
+              <Trophy className="mr-1.5 inline h-4 w-4" />
+              {practiceNote}
+            </p>
+            <button
+              type="button"
+              onClick={() => setPracticeNote(null)}
+              className="mt-1 text-[11px] font-bold text-foreground/50 underline-offset-2 hover:underline"
+            >
+              dismiss
+            </button>
+          </div>,
+          document.body
+        )}
 
-      {/* ---------------- settlement ---------------- */}
-      {settlement && match && (
-        <SettlementCard
-          players={match.players}
-          settlement={settlement}
-          onRematch={() => {
-            const key = match.key;
-            setSettlement(null);
-            setMatch(null);
-            window.setTimeout(() => launch(key, false), 60);
-          }}
-          onDone={closeSettlement}
-        />
-      )}
+      {/* ---------------- settlement (portaled) ---------------- */}
+      {portalReady &&
+        settlement &&
+        match &&
+        createPortal(
+          <SettlementCard
+            players={match.players}
+            settlement={settlement}
+            onRematch={() => {
+              const key = match.key;
+              setSettlement(null);
+              setMatch(null);
+              window.setTimeout(() => launch(key, false), 60);
+            }}
+            onDone={closeSettlement}
+          />,
+          document.body
+        )}
     </section>
   );
 }

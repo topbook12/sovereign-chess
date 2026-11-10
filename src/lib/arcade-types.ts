@@ -1,6 +1,6 @@
 /**
  * Sovereign Chess — Arcade contract shared by every stake game
- * (Ludo, Carrom, Snake Duel).
+ * (Ludo, Carrom, Snake Arena).
  *
  * Games are pure: they know NOTHING about diamonds or wallets. They render
  * a two-player match (pass-and-play on one device) and report the outcome
