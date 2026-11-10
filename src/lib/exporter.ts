@@ -10,6 +10,7 @@
 import type { StoredGame, CareerProfile } from "./game-store";
 import type { CloudGame } from "./cloud";
 import { levelFromXp } from "./game-store";
+import { getLedger, getWithdrawals, balanceTaka } from "./diamonds";
 
 export type ExportGame = StoredGame | (CloudGame & { label?: string | null });
 
@@ -81,6 +82,7 @@ export async function exportGamesToExcel(
     { Field: "Daily Streak", Value: profile.dailyStreak },
     { Field: "Best Daily Streak", Value: profile.bestDailyStreak },
     { Field: "Achievements", Value: profile.achievements.join(", ") },
+    { Field: "Diamond Balance", Value: `${getLedger().reduce((s, e) => s + e.delta, 0)} 💎 (৳${balanceTaka()})` },
   ];
 
   const wb = XLSX.utils.book_new();
@@ -98,6 +100,40 @@ export async function exportGamesToExcel(
   const ws2 = XLSX.utils.json_to_sheet(profileRows);
   ws2["!cols"] = [{ wch: 22 }, { wch: 46 }];
   XLSX.utils.book_append_sheet(wb, ws2, "Profile");
+
+  /* Diamond Vault — every gem is real value (1 💎 = ৳50) */
+  const ledger = getLedger();
+  let running = 0;
+  const diamondRows = ledger
+    .slice()
+    .reverse()
+    .map((e) => {
+      running += e.delta;
+      return {
+        Date: fmtDate(e.t),
+        Event: e.reason,
+        Detail: e.detail ?? "",
+        Diamonds: e.delta,
+        Balance: running,
+        "Value (৳)": running * 50,
+      };
+    });
+  const ws3 = XLSX.utils.json_to_sheet(diamondRows);
+  ws3["!cols"] = [{ wch: 19 }, { wch: 12 }, { wch: 34 }, { wch: 10 }, { wch: 10 }, { wch: 11 }];
+  XLSX.utils.book_append_sheet(wb, ws3, "Diamonds");
+
+  const withdrawalRows = getWithdrawals().map((w) => ({
+    "Claim ID": w.id,
+    Date: fmtDate(w.t),
+    Diamonds: w.diamonds,
+    "Amount (৳)": w.taka,
+    Method: w.method.toUpperCase(),
+    Account: w.account,
+    Status: w.status,
+  }));
+  const ws4 = XLSX.utils.json_to_sheet(withdrawalRows);
+  ws4["!cols"] = [{ wch: 12 }, { wch: 19 }, { wch: 10 }, { wch: 12 }, { wch: 9 }, { wch: 16 }, { wch: 10 }];
+  XLSX.utils.book_append_sheet(wb, ws4, "Withdrawals");
 
   const name =
     filename ?? `sovereign-chess-${new Date().toISOString().slice(0, 10)}.xlsx`;

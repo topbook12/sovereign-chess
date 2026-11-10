@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChessGame } from "@/hooks/use-chess-game";
 import { PlayView } from "@/components/chess/play-view";
+import { DuelView } from "@/components/chess/duel-view";
 import { AnalyzeView } from "@/components/chess/analyze-view";
 import { LearnView } from "@/components/chess/learn-view";
 import { CareerView } from "@/components/chess/career-view";
@@ -89,7 +90,13 @@ export default function Home() {
   // PWA shortcut / notification deep links — "/?tab=analyze" opens the oracle
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab");
-    if (t === "play" || t === "learn" || t === "analyze" || t === "career") {
+    if (
+      t === "play" ||
+      t === "duel" ||
+      t === "learn" ||
+      t === "analyze" ||
+      t === "career"
+    ) {
       const r = requestAnimationFrame(() => setTab(t));
       return () => cancelAnimationFrame(r);
     }
@@ -167,6 +174,13 @@ export default function Home() {
               onToggleFocus={toggleFocusMode}
               onRequestNewGame={() => setNewGameOpen(true)}
             />
+          </div>
+        </div>
+
+        {/* ---------------- duel room ---------------- */}
+        <div className={cn("flex min-h-0 flex-1 flex-col", tab !== "duel" && "hidden")}>
+          <div className="tab-scroll min-h-0 flex-1 pb-36 pt-1 lg:pb-6">
+            <DuelView />
           </div>
         </div>
 

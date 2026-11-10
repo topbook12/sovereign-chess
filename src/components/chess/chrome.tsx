@@ -6,6 +6,7 @@ import {
   ChartLine,
   Crown,
   Flame,
+  Gem,
   Info,
   ScrollText,
   ShieldCheck,
@@ -50,6 +51,7 @@ export function AuroraBackground() {
 
 const NAV_ITEMS: { id: AppTab; label: string; icon: React.ReactNode }[] = [
   { id: "play", label: "Play", icon: <Swords className="h-3.5 w-3.5" /> },
+  { id: "duel", label: "Duel", icon: <Gem className="h-3.5 w-3.5" /> },
   { id: "learn", label: "Learn", icon: <BookOpen className="h-3.5 w-3.5" /> },
   { id: "analyze", label: "Analyze", icon: <ChartLine className="h-3.5 w-3.5" /> },
   { id: "career", label: "Career", icon: <Trophy className="h-3.5 w-3.5" /> },

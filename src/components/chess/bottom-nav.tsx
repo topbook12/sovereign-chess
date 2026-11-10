@@ -7,14 +7,15 @@
  * Desktop uses the header tabs instead.
  */
 
-import { BookOpen, ChartLine, Swords, Trophy } from "lucide-react";
+import { BookOpen, ChartLine, Gem, Swords, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { pulse } from "@/lib/haptics";
 
-export type AppTab = "play" | "analyze" | "learn" | "career";
+export type AppTab = "play" | "duel" | "analyze" | "learn" | "career";
 
 const TABS: { id: AppTab; label: string; icon: React.ReactNode }[] = [
   { id: "play", label: "Play", icon: <Swords className="h-5 w-5" /> },
+  { id: "duel", label: "Duel", icon: <Gem className="h-5 w-5" /> },
   { id: "learn", label: "Learn", icon: <BookOpen className="h-5 w-5" /> },
   { id: "analyze", label: "Analyze", icon: <ChartLine className="h-5 w-5" /> },
   { id: "career", label: "Career", icon: <Trophy className="h-5 w-5" /> },
