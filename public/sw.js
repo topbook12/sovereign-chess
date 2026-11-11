@@ -11,7 +11,7 @@
  *  - API routes are NEVER cached — user data lives on-device first.
  */
 
-const VERSION = "v1.5.0";
+const VERSION = "v1.5.1";
 const STATIC_CACHE = `sovereign-static-${VERSION}`;
 const PAGE_CACHE = `sovereign-pages-${VERSION}`;
 const OWNED = [STATIC_CACHE, PAGE_CACHE];
@@ -66,10 +66,11 @@ self.addEventListener("fetch", (event) => {
 
   // cross-origin: pass through untouched
   if (url.origin !== self.location.origin) return;
+  const pathname = url.pathname;
   // never touch API / cloud sync — device data must stay authoritative
-  if (url.pathname.startsWith("/api/")) return;
+  if (pathname.startsWith("/api/")) return;
   // never intercept dev tooling / HMR
-  if (url.pathname.startsWith("/_next/webpack-hmr")) return;
+  if (pathname.startsWith("/_next/webpack-hmr")) return;
 
   // 1) Navigations — network-first, cached page + offline page as fallback
   if (req.mode === "navigate") {

@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useChessGame } from "@/hooks/use-chess-game";
 import { PlayView } from "@/components/chess/play-view";
 import { DuelView } from "@/components/chess/duel-view";
+import { ArcadeView } from "@/components/arcade/arcade-view";
 import { AnalyzeView } from "@/components/chess/analyze-view";
 import { LearnView } from "@/components/chess/learn-view";
 import { CareerView } from "@/components/chess/career-view";
@@ -96,6 +97,7 @@ export default function Home() {
     if (
       t === "play" ||
       t === "duel" ||
+      t === "arcade" ||
       t === "learn" ||
       t === "analyze" ||
       t === "career"
@@ -184,6 +186,13 @@ export default function Home() {
         <div className={cn("flex min-h-0 flex-1 flex-col", tab !== "duel" && "hidden")}>
           <div className="tab-scroll min-h-0 flex-1 pb-36 pt-1 lg:pb-6">
             <DuelView />
+          </div>
+        </div>
+
+        {/* ---------------- arcade room ---------------- */}
+        <div className={cn("flex min-h-0 flex-1 flex-col", tab !== "arcade" && "hidden")}>
+          <div className="min-h-0 flex-1 pt-1">
+            <ArcadeView />
           </div>
         </div>
 
