@@ -191,7 +191,7 @@ export default function Home() {
 
         {/* ---------------- arcade room ---------------- */}
         <div className={cn("flex min-h-0 flex-1 flex-col", tab !== "arcade" && "hidden")}>
-          <div className="min-h-0 flex-1 pt-1">
+          <div className="flex min-h-0 flex-1 flex-col pt-1">
             <ArcadeView />
           </div>
         </div>

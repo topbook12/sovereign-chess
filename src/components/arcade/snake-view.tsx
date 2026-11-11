@@ -8,6 +8,12 @@
  *  - a snake that looks alive: gradient scaled body, belly highlight,
  *    animated eyes that track the travel direction and a flicking tongue
  *    that reaches out when food is near
+ *  - SIX pro skins (Emerald, Royal Gold, Crimson, Amethyst, Venom, Onyx)
+ *    — each repaints the whole world: body, head, eyes, tongue, scales,
+ *    glow, death burst AND the playground itself (board tint, checker,
+ *    halo, vignette, frame) — changed live from the Dressing Room
+ *  - four playground sizes (Cozy / Classic / Grand / Epic), grid density
+ *    from 13 to 28 cells along the short edge, applied live, persisted
  *  - pulsing apples + timed golden apples (50 pts, lose them if slow)
  *  - particle bursts, floating score text, screen shake, death explosion
  *  - swipe / D-pad / keyboard controls, auto-pause on tab blur
@@ -19,21 +25,25 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Apple,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
   House,
+  Palette,
   Pause,
   Play,
   RotateCcw,
   Sparkles,
   Trophy,
   Worm,
+  X,
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { pulse } from "@/lib/haptics";
 import { playSound, primeAudio } from "@/lib/sounds";
 import { cn } from "@/lib/utils";
 
@@ -89,6 +99,290 @@ const GOLDEN_TTL = 7000; // ms before a golden apple expires
 
 const BEST_KEY = "sovereign.snake.best";
 const GAMES_KEY = "sovereign.snake.games";
+const SKIN_KEY = "sovereign.snake.skin";
+const SIZE_KEY = "sovereign.snake.size";
+
+/* ------------------------------- snake skins ------------------------------- */
+
+interface Skin {
+  id: string;
+  name: string;
+  /** head → mid → tail body gradient */
+  body: [string, string, string];
+  /** head radial gradient */
+  head: [string, string, string];
+  outline: string;
+  belly: string;
+  scale: string;
+  glow: string;
+  eye: string;
+  pupil: string;
+  tongue: string;
+  burst: string[];
+  /** playground ambience — each skin repaints the whole world */
+  board: string;
+  checker: string;
+  halo: string;
+  vignette: string;
+  frame: string;
+  shadow: string;
+}
+
+const SKINS: Skin[] = [
+  {
+    id: "emerald",
+    name: "Emerald",
+    body: ["#4ade80", "#22c55e", "#15803d"],
+    head: ["#86efac", "#34d399", "#059669"],
+    outline: "rgba(3,26,17,0.92)",
+    belly: "rgba(209,250,229,0.2)",
+    scale: "rgba(5,46,32,0.38)",
+    glow: "rgba(52,211,153,0.45)",
+    eye: "#f8fafc",
+    pupil: "#0f172a",
+    tongue: "#fb7185",
+    burst: ["#34d399", "#10b981", "#065f46", "#a7f3d0"],
+    board: "#06100b",
+    checker: "rgba(255,255,255,0.026)",
+    halo: "rgba(52,211,153,0.075)",
+    vignette: "rgba(0,0,0,0.5)",
+    frame: "rgba(52,211,153,0.35)",
+    shadow: "rgba(16,185,129,0.5)",
+  },
+  {
+    id: "gold",
+    name: "Royal Gold",
+    body: ["#fde68a", "#f59e0b", "#92400e"],
+    head: ["#fef3c7", "#fbbf24", "#b45309"],
+    outline: "rgba(41,26,3,0.92)",
+    belly: "rgba(255,251,235,0.25)",
+    scale: "rgba(120,53,15,0.4)",
+    glow: "rgba(251,191,36,0.5)",
+    eye: "#fffbeb",
+    pupil: "#291a03",
+    tongue: "#f87171",
+    burst: ["#fde047", "#fbbf24", "#b45309", "#fff7d6"],
+    board: "#0d0a03",
+    checker: "rgba(255,236,180,0.03)",
+    halo: "rgba(251,191,36,0.08)",
+    vignette: "rgba(18,10,0,0.55)",
+    frame: "rgba(212,175,55,0.55)",
+    shadow: "rgba(212,175,55,0.6)",
+  },
+  {
+    id: "ruby",
+    name: "Crimson",
+    body: ["#fca5a5", "#ef4444", "#7f1d1d"],
+    head: ["#fecaca", "#f87171", "#991b1b"],
+    outline: "rgba(30,3,3,0.92)",
+    belly: "rgba(255,228,230,0.22)",
+    scale: "rgba(127,29,29,0.42)",
+    glow: "rgba(248,113,113,0.45)",
+    eye: "#fff1f2",
+    pupil: "#1f0505",
+    tongue: "#fb923c",
+    burst: ["#f87171", "#ef4444", "#7f1d1d", "#fecaca"],
+    board: "#0d0404",
+    checker: "rgba(255,220,220,0.028)",
+    halo: "rgba(248,113,113,0.07)",
+    vignette: "rgba(20,0,0,0.55)",
+    frame: "rgba(248,113,113,0.4)",
+    shadow: "rgba(239,68,68,0.5)",
+  },
+  {
+    id: "amethyst",
+    name: "Amethyst",
+    body: ["#e9d5ff", "#c084fc", "#6b21a8"],
+    head: ["#f3e8ff", "#d8b4fe", "#7e22ce"],
+    outline: "rgba(20,3,26,0.92)",
+    belly: "rgba(250,240,255,0.22)",
+    scale: "rgba(88,28,135,0.4)",
+    glow: "rgba(192,132,252,0.45)",
+    eye: "#fdf4ff",
+    pupil: "#1e0526",
+    tongue: "#f472b6",
+    burst: ["#d8b4fe", "#c084fc", "#7e22ce", "#f5d0fe"],
+    board: "#0a040d",
+    checker: "rgba(240,220,255,0.028)",
+    halo: "rgba(192,132,252,0.075)",
+    vignette: "rgba(16,0,24,0.55)",
+    frame: "rgba(192,132,252,0.4)",
+    shadow: "rgba(192,132,252,0.5)",
+  },
+  {
+    id: "venom",
+    name: "Venom",
+    body: ["#d9f99d", "#a3e635", "#3f6212"],
+    head: ["#ecfccb", "#bef264", "#4d7c0f"],
+    outline: "rgba(12,20,2,0.92)",
+    belly: "rgba(247,255,214,0.25)",
+    scale: "rgba(63,98,18,0.42)",
+    glow: "rgba(163,230,53,0.5)",
+    eye: "#f7fee7",
+    pupil: "#101a01",
+    tongue: "#f43f5e",
+    burst: ["#bef264", "#a3e635", "#4d7c0f", "#ecfccb"],
+    board: "#070c02",
+    checker: "rgba(230,255,190,0.03)",
+    halo: "rgba(163,230,53,0.08)",
+    vignette: "rgba(10,16,0,0.55)",
+    frame: "rgba(163,230,53,0.4)",
+    shadow: "rgba(132,204,22,0.5)",
+  },
+  {
+    id: "onyx",
+    name: "Onyx",
+    body: ["#e2e8f0", "#94a3b8", "#1e293b"],
+    head: ["#f8fafc", "#cbd5e1", "#475569"],
+    outline: "rgba(2,6,12,0.92)",
+    belly: "rgba(255,255,255,0.28)",
+    scale: "rgba(15,23,42,0.45)",
+    glow: "rgba(226,232,240,0.4)",
+    eye: "#ffffff",
+    pupil: "#020617",
+    tongue: "#f43f5e",
+    burst: ["#f8fafc", "#cbd5e1", "#64748b", "#e2e8f0"],
+    board: "#05070a",
+    checker: "rgba(255,255,255,0.03)",
+    halo: "rgba(226,232,240,0.06)",
+    vignette: "rgba(0,0,0,0.6)",
+    frame: "rgba(226,232,240,0.32)",
+    shadow: "rgba(148,163,184,0.45)",
+  },
+];
+
+/* ----------------------------- playground sizes ---------------------------- */
+
+interface SizePreset {
+  id: string;
+  name: string;
+  /** target grid count along the shorter edge */
+  cells: number;
+  note: string;
+}
+
+const SIZES: SizePreset[] = [
+  { id: "cozy", name: "Cozy", cells: 13, note: "Big cells · chill" },
+  { id: "classic", name: "Classic", cells: 17, note: "The real deal" },
+  { id: "grand", name: "Grand", cells: 22, note: "Long snakes" },
+  { id: "epic", name: "Epic", cells: 28, note: "Pro · tiny cells" },
+];
+
+/* ----------------------- skin preview (dressing room) ---------------------- */
+
+function SkinPreview({ skin, size = 44 }: { skin: Skin; size?: number }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const c = ref.current;
+    if (!c) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    c.width = Math.round(size * dpr);
+    c.height = Math.round(size * dpr);
+    const g = c.getContext("2d");
+    if (!g) return;
+    g.scale(dpr, dpr);
+    g.clearRect(0, 0, size, size);
+    g.fillStyle = skin.board;
+    g.fillRect(0, 0, size, size);
+    g.fillStyle = skin.checker;
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < 4; x++) {
+        if ((x + y) % 2 === 0)
+          g.fillRect((x * size) / 4, (y * size) / 4, size / 4, size / 4);
+      }
+    }
+    const pts: { x: number; y: number }[] = [];
+    for (let i = 0; i < 6; i++) {
+      const t = i / 5;
+      pts.push({
+        x: size * (0.84 - t * 0.6),
+        y: size * (0.45 + Math.sin(t * Math.PI * 1.7) * 0.19),
+      });
+    }
+    g.lineCap = "round";
+    g.lineJoin = "round";
+    const trace = () => {
+      g.beginPath();
+      g.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length - 1; i++) {
+        const mx = (pts[i].x + pts[i + 1].x) / 2;
+        const my = (pts[i].y + pts[i + 1].y) / 2;
+        g.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+      }
+      g.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+    };
+    g.strokeStyle = skin.outline;
+    g.lineWidth = size * 0.2;
+    trace();
+    g.stroke();
+    const grd = g.createLinearGradient(
+      pts[0].x,
+      pts[0].y,
+      pts[pts.length - 1].x,
+      pts[pts.length - 1].y
+    );
+    grd.addColorStop(0, skin.body[0]);
+    grd.addColorStop(0.55, skin.body[1]);
+    grd.addColorStop(1, skin.body[2]);
+    g.save();
+    g.shadowColor = skin.glow;
+    g.shadowBlur = size * 0.16;
+    g.strokeStyle = grd;
+    g.lineWidth = size * 0.15;
+    trace();
+    g.stroke();
+    g.restore();
+    g.strokeStyle = skin.belly;
+    g.lineWidth = size * 0.055;
+    trace();
+    g.stroke();
+    const h = pts[0];
+    const ang = Math.atan2(h.y - pts[1].y, h.x - pts[1].x);
+    g.save();
+    g.translate(h.x, h.y);
+    g.rotate(ang);
+    const hg = g.createRadialGradient(
+      -size * 0.02,
+      -size * 0.02,
+      size * 0.01,
+      0,
+      0,
+      size * 0.13
+    );
+    hg.addColorStop(0, skin.head[0]);
+    hg.addColorStop(0.6, skin.head[1]);
+    hg.addColorStop(1, skin.head[2]);
+    g.fillStyle = hg;
+    g.beginPath();
+    g.ellipse(0, 0, size * 0.125, size * 0.1, 0, 0, Math.PI * 2);
+    g.fill();
+    for (const sy of [-1, 1]) {
+      g.fillStyle = skin.eye;
+      g.beginPath();
+      g.ellipse(size * 0.02, sy * size * 0.048, size * 0.026, size * 0.032, 0, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = skin.pupil;
+      g.beginPath();
+      g.arc(size * 0.034, sy * size * 0.048, size * 0.014, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.strokeStyle = skin.tongue;
+    g.lineWidth = Math.max(1, size * 0.02);
+    g.beginPath();
+    g.moveTo(size * 0.12, 0);
+    g.lineTo(size * 0.19, 0);
+    g.stroke();
+    g.restore();
+  }, [skin, size]);
+  return (
+    <canvas
+      ref={ref}
+      style={{ width: size, height: size }}
+      aria-hidden="true"
+      className="rounded-lg"
+    />
+  );
+}
 
 /* ------------------------------- particle fx -------------------------------- */
 
@@ -142,6 +436,11 @@ export function SnakeView() {
   const [newBest, setNewBest] = useState(false);
   const [won, setWon] = useState(false);
   const [showPad, setShowPad] = useState(false);
+  const [skinId, setSkinId] = useState(SKINS[0].id);
+  const [sizeId, setSizeId] = useState(SIZES[1].id);
+  const [dims, setDims] = useState({ cols: 17, rows: 17 });
+  const [showStyle, setShowStyle] = useState(false);
+  const skin = SKINS.find((k) => k.id === skinId) ?? SKINS[0];
 
   /* ---- engine refs (mutated at 60fps, never re-render) ---- */
   const statusRef = useRef<Status>("idle");
@@ -182,6 +481,11 @@ export function SnakeView() {
     setStatus(s);
   }, []);
 
+  /* ---- dressing-room refs (skin + playground size) ---- */
+  const skinRef = useRef<Skin>(SKINS[0]);
+  const sizeRef = useRef<SizePreset>(SIZES[1]);
+  const showStyleRef = useRef(false);
+
   /* ---- food ---- */
   const spawnFood = useCallback(
     (golden?: boolean) => {
@@ -201,7 +505,7 @@ export function SnakeView() {
         if (h) {
           spawnBurst(partsRef.current, (h.x + 0.5) * cell, (h.y + 0.5) * cell, {
             count: 60,
-            colors: ["#fde047", "#fbbf24", "#fff7d6", "#4ade80"],
+            colors: ["#fde047", "#fbbf24", "#fff7d6", skinRef.current.body[0]],
             speed: 4.5,
             life: 1100,
             size: 3,
@@ -298,12 +602,14 @@ export function SnakeView() {
     if (w < 60 || h < 60) return;
     const st = statusRef.current;
     if (st === "idle" || st === "over") {
-      const target = Math.max(21, Math.min(34, Math.floor(Math.min(w, h) / 16)));
-      const cols = Math.max(12, Math.min(32, Math.floor(w / target)));
-      const rows = Math.max(12, Math.min(32, Math.floor(h / target)));
+      const cells = Math.max(10, Math.min(32, sizeRef.current.cells));
+      const target = Math.max(13, Math.floor(Math.min(w, h) / cells));
+      const cols = Math.max(10, Math.min(64, Math.floor(w / target)));
+      const rows = Math.max(10, Math.min(40, Math.floor(h / target)));
       if (cols !== prevDimsRef.current.cols || rows !== prevDimsRef.current.rows) {
         prevDimsRef.current = { cols, rows };
         gridRef.current = { cols, rows };
+        setDims({ cols, rows });
         if (st === "idle" && snakeRef.current.length) {
           resetGame();
         } else if (st === "over") {
@@ -335,16 +641,21 @@ export function SnakeView() {
       g.scale(dpr, dpr);
       const W = cols * cell;
       const H = rows * cell;
-      g.fillStyle = "#06100b";
+      g.fillStyle = skinRef.current.board;
       g.fillRect(0, 0, W, H);
       for (let y = 0; y < rows; y++) {
         for (let x = 0; x < cols; x++) {
           if ((x + y) % 2 === 0) {
-            g.fillStyle = "rgba(255,255,255,0.026)";
+            g.fillStyle = skinRef.current.checker;
             g.fillRect(x * cell, y * cell, cell + 0.5, cell + 0.5);
           }
         }
       }
+      const halo = g.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.min(W, H) * 0.6);
+      halo.addColorStop(0, skinRef.current.halo);
+      halo.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = halo;
+      g.fillRect(0, 0, W, H);
       const vg = g.createRadialGradient(
         W / 2,
         H / 2,
@@ -354,7 +665,7 @@ export function SnakeView() {
         Math.max(W, H) * 0.72
       );
       vg.addColorStop(0, "rgba(0,0,0,0)");
-      vg.addColorStop(1, "rgba(0,0,0,0.5)");
+      vg.addColorStop(1, skinRef.current.vignette);
       g.fillStyle = vg;
       g.fillRect(0, 0, W, H);
     }
@@ -376,10 +687,19 @@ export function SnakeView() {
       const leveled = nl > levelRef.current;
       levelRef.current = nl;
 
-      spawnBurst(partsRef.current, cx, cy,
+      spawnBurst(
+        partsRef.current,
+        cx,
+        cy,
         f.golden
           ? { count: 26, colors: ["#fde047", "#fbbf24", "#fff7d6"], speed: 3.4, life: 700, size: 2.6 }
-          : { count: 16, colors: ["#f87171", "#fca5a5", "#fecaca", "#4ade80"], speed: 2.6, life: 550, size: 2.2 }
+          : {
+              count: 16,
+              colors: ["#f87171", "#fca5a5", "#fecaca", skinRef.current.body[0]],
+              speed: 2.6,
+              life: 550,
+              size: 2.2,
+            }
       );
       floatsRef.current.push({
         x: cx,
@@ -483,7 +803,7 @@ export function SnakeView() {
         if (c) {
           spawnBurst(partsRef.current, (c.x + 0.5) * cell, (c.y + 0.5) * cell, {
             count: 7,
-            colors: ["#34d399", "#10b981", "#065f46", "#a7f3d0"],
+            colors: skinRef.current.burst,
             speed: 2.4,
             life: 620,
             size: 2.4,
@@ -654,7 +974,7 @@ export function SnakeView() {
     };
 
     // dark under-body outline
-    ctx.strokeStyle = "rgba(3,26,17,0.92)";
+    ctx.strokeStyle = skinRef.current.outline;
     ctx.lineWidth = cell * 0.84;
     tracePath();
     ctx.stroke();
@@ -662,11 +982,11 @@ export function SnakeView() {
     // glowing gradient body
     const tail = pts[pts.length - 1];
     const grd = ctx.createLinearGradient(pts[0].x, pts[0].y, tail.x, tail.y);
-    grd.addColorStop(0, "#4ade80");
-    grd.addColorStop(0.55, "#22c55e");
-    grd.addColorStop(1, "#15803d");
+    grd.addColorStop(0, skinRef.current.body[0]);
+    grd.addColorStop(0.55, skinRef.current.body[1]);
+    grd.addColorStop(1, skinRef.current.body[2]);
     ctx.save();
-    ctx.shadowColor = "rgba(52,211,153,0.45)";
+    ctx.shadowColor = skinRef.current.glow;
     ctx.shadowBlur = cell * 0.55;
     ctx.strokeStyle = grd;
     ctx.lineWidth = cell * 0.68;
@@ -675,13 +995,13 @@ export function SnakeView() {
     ctx.restore();
 
     // belly highlight
-    ctx.strokeStyle = "rgba(209,250,229,0.2)";
+    ctx.strokeStyle = skinRef.current.belly;
     ctx.lineWidth = cell * 0.26;
     tracePath();
     ctx.stroke();
 
     // scale diamonds along the spine
-    ctx.fillStyle = "rgba(5,46,32,0.38)";
+    ctx.fillStyle = skinRef.current.scale;
     for (let i = 2; i < pts.length - 1; i += 2) {
       const p = pts[i];
       const q = pts[i - 1];
@@ -705,12 +1025,12 @@ export function SnakeView() {
     ctx.save();
     ctx.translate(h.x, h.y);
     ctx.rotate(ang);
-    ctx.shadowColor = "rgba(74,222,128,0.6)";
+    ctx.shadowColor = skinRef.current.glow;
     ctx.shadowBlur = cell * 0.6;
     const hg = ctx.createRadialGradient(-cell * 0.08, -cell * 0.1, cell * 0.05, 0, 0, cell * 0.52);
-    hg.addColorStop(0, "#86efac");
-    hg.addColorStop(0.6, "#34d399");
-    hg.addColorStop(1, "#059669");
+    hg.addColorStop(0, skinRef.current.head[0]);
+    hg.addColorStop(0.6, skinRef.current.head[1]);
+    hg.addColorStop(1, skinRef.current.head[2]);
     ctx.fillStyle = hg;
     ctx.beginPath();
     ctx.ellipse(0, 0, cell * 0.5, cell * 0.4, 0, 0, Math.PI * 2);
@@ -723,11 +1043,11 @@ export function SnakeView() {
     ctx.fill();
     // eyes
     for (const sy of [-1, 1]) {
-      ctx.fillStyle = "#f8fafc";
+      ctx.fillStyle = skinRef.current.eye;
       ctx.beginPath();
       ctx.ellipse(cell * 0.1, sy * cell * 0.2, cell * 0.12, cell * 0.14, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = "#0f172a";
+      ctx.fillStyle = skinRef.current.pupil;
       ctx.beginPath();
       ctx.arc(cell * 0.14, sy * cell * 0.2, cell * 0.058, 0, Math.PI * 2);
       ctx.fill();
@@ -751,7 +1071,7 @@ export function SnakeView() {
     const st = statusRef.current;
     if (ext > 0.02 && st !== "over" && st !== "dying") {
       const tLen = cell * 0.6 * ext;
-      ctx.strokeStyle = "#fb7185";
+      ctx.strokeStyle = skinRef.current.tongue;
       ctx.lineWidth = Math.max(1.6, cell * 0.07);
       ctx.beginPath();
       ctx.moveTo(cell * 0.45, 0);
@@ -902,10 +1222,12 @@ export function SnakeView() {
 
   const start = useCallback(() => {
     primeAudio();
+    prevDimsRef.current = { cols: 0, rows: 0 }; // re-apply the chosen playground every fresh run
+    fit();
     resetGame();
     applyStatus("playing");
     playSound("achievement");
-  }, [applyStatus, resetGame]);
+  }, [applyStatus, fit, resetGame]);
 
   const togglePause = useCallback(() => {
     const st = statusRef.current;
@@ -919,14 +1241,85 @@ export function SnakeView() {
   }, [applyStatus]);
 
   const goMenu = useCallback(() => {
+    prevDimsRef.current = { cols: 0, rows: 0 };
+    fit();
     resetGame();
     applyStatus("idle");
     playSound("select");
-  }, [applyStatus, resetGame]);
+  }, [applyStatus, fit, resetGame]);
+
+  /* ---- dressing room: skins & playground size ---- */
+
+  const openStyle = useCallback(() => {
+    if (statusRef.current === "playing") applyStatus("paused");
+    showStyleRef.current = true;
+    setShowStyle(true);
+    pulse("tick");
+    playSound("select");
+  }, [applyStatus]);
+
+  const closeStyle = useCallback(() => {
+    showStyleRef.current = false;
+    setShowStyle(false);
+    playSound("select");
+  }, []);
+
+  const pickSkin = useCallback(
+    (id: string) => {
+      const s = SKINS.find((k) => k.id === id);
+      if (!s || skinRef.current.id === s.id) return;
+      skinRef.current = s;
+      setSkinId(s.id);
+      try {
+        window.localStorage.setItem(SKIN_KEY, s.id);
+      } catch {
+        /* session-only */
+      }
+      pulse("tick");
+      playSound("select");
+      fit(); // re-tints the whole playground instantly — even mid-run
+    },
+    [fit]
+  );
+
+  const pickSize = useCallback(
+    (id: string) => {
+      const z = SIZES.find((k) => k.id === id);
+      if (!z || sizeRef.current.id === z.id) return;
+      sizeRef.current = z;
+      setSizeId(z.id);
+      try {
+        window.localStorage.setItem(SIZE_KEY, z.id);
+      } catch {
+        /* session-only */
+      }
+      pulse("tick");
+      playSound("select");
+      prevDimsRef.current = { cols: 0, rows: 0 }; // force the grid to re-apply
+      fit(); // idle → regrids + reseeds now; mid-run → lands on the next run
+    },
+    [fit]
+  );
 
   // boot: load records, size the board, seed the idle preview
   useEffect(() => {
     try {
+      const sid = window.localStorage.getItem(SKIN_KEY);
+      if (sid) {
+        const s = SKINS.find((k) => k.id === sid);
+        if (s) {
+          skinRef.current = s;
+          setSkinId(s.id);
+        }
+      }
+      const zid = window.localStorage.getItem(SIZE_KEY);
+      if (zid) {
+        const z = SIZES.find((k) => k.id === zid);
+        if (z) {
+          sizeRef.current = z;
+          setSizeId(z.id);
+        }
+      }
       const b = parseInt(window.localStorage.getItem(BEST_KEY) || "0", 10);
       if (Number.isFinite(b) && b > 0) {
         bestRef.current = b;
@@ -958,6 +1351,11 @@ export function SnakeView() {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       const k = e.key.toLowerCase();
+      if (k === "escape" && showStyleRef.current) {
+        e.preventDefault();
+        closeStyle();
+        return;
+      }
       const map: Record<string, Vec> = {
         arrowup: UP,
         w: UP,
@@ -985,7 +1383,7 @@ export function SnakeView() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [start, queueDir, togglePause]);
+  }, [start, queueDir, togglePause, closeStyle]);
 
   // swipe / tap on the board (pointer events cover touch, pen and mouse)
   useEffect(() => {
@@ -1131,7 +1529,7 @@ export function SnakeView() {
 
   return (
     <div className="tab-scroll flex min-h-0 flex-1 flex-col">
-      <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-2.5 px-1 pb-24 lg:pb-4">
+      <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-2.5 px-1 pb-24 lg:pb-4 xl:max-w-4xl">
         {/* HUD */}
         <div className="flex items-stretch gap-2">
           {statCard(
@@ -1153,6 +1551,11 @@ export function SnakeView() {
             "text-emerald-200"
           )}
           <div className="ml-auto flex items-center gap-1.5">
+            {iconBtn(
+              openStyle,
+              "Snake skin & playground size",
+              <Palette className="h-4.5 w-4.5" />
+            )}
             {iconBtn(start, "Restart", <RotateCcw className="h-4.5 w-4.5" />, status === "idle")}
             {iconBtn(
               togglePause,
@@ -1169,7 +1572,16 @@ export function SnakeView() {
           className="relative flex min-h-[240px] flex-1 select-none items-center justify-center p-1.5"
           style={{ touchAction: "none" }}
         >
-          <div className="relative rounded-2xl border border-[#8a6a24]/40 bg-black/60 p-1.5 shadow-[0_0_55px_-16px_rgba(212,175,55,0.55)]">
+          <div className="relative">
+            <div
+              aria-hidden="true"
+              className="absolute -inset-1 animate-pulse rounded-[22px] blur-lg [animation-duration:3.4s]"
+              style={{ background: skin.shadow, opacity: 0.26 }}
+            />
+            <div
+              className="relative rounded-2xl border bg-black/60 p-1.5 transition-all duration-500"
+              style={{ borderColor: skin.frame, boxShadow: `0 0 55px -16px ${skin.shadow}` }}
+            >
             <canvas
               ref={canvasRef}
               role="img"
@@ -1201,7 +1613,7 @@ export function SnakeView() {
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.22 }}
                   onClick={start}
-                  className="absolute inset-0 z-30 flex cursor-pointer items-center justify-center rounded-2xl bg-black/65 backdrop-blur-[3px]"
+                  className="absolute inset-0 z-30 flex cursor-pointer items-center justify-center overflow-hidden rounded-2xl bg-black/65 backdrop-blur-[3px]"
                 >
                   <div className="px-6 text-center">
                     <motion.div
@@ -1227,6 +1639,17 @@ export function SnakeView() {
                         Play
                       </span>
                     </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openStyle();
+                      }}
+                      className="mt-3 inline-flex h-10 items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.06] px-4 text-[10.5px] font-bold uppercase tracking-[0.16em] text-white/60 transition active:scale-95"
+                    >
+                      <Palette className="h-3.5 w-3.5" />
+                      {skin.name} · {dims.cols}×{dims.rows}
+                    </button>
                     <p className="mt-3.5 text-[11px] leading-relaxed text-white/45">
                       Swipe or use arrow keys / WASD to steer
                       <br />
@@ -1244,7 +1667,7 @@ export function SnakeView() {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.18 }}
-                  className="absolute inset-0 z-30 flex items-center justify-center rounded-2xl bg-black/65 backdrop-blur-[3px]"
+                  className="absolute inset-0 z-30 flex items-center justify-center overflow-hidden rounded-2xl bg-black/65 backdrop-blur-[3px]"
                 >
                   <div className="text-center">
                     <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-amber-300/80">
@@ -1291,7 +1714,7 @@ export function SnakeView() {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="absolute inset-0 z-30 flex items-center justify-center rounded-2xl bg-black/70 backdrop-blur-[3px]"
+                  className="absolute inset-0 z-30 flex items-center justify-center overflow-hidden rounded-2xl bg-black/70 backdrop-blur-[3px]"
                 >
                   <motion.div
                     initial={{ scale: 0.88, opacity: 0, y: 12 }}
@@ -1365,7 +1788,128 @@ export function SnakeView() {
                   </motion.div>
                 </motion.div>
               )}
+
+              {/* ---- dressing room: skins & playground size ---- */}
+              {showStyle && (
+                <motion.div
+                  key="style"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="absolute inset-0 z-40 flex flex-col rounded-2xl bg-black/85 p-3.5 backdrop-blur-md sm:p-4"
+                >
+                  <div className="flex shrink-0 items-center justify-between gap-2">
+                    <div>
+                      <p className="text-[9.5px] font-bold uppercase tracking-[0.3em] text-amber-300/80">
+                        Dressing room
+                      </p>
+                      <h3 className="text-xl font-black text-amber-100">
+                        Style your snake
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Close styling"
+                      onClick={closeStyle}
+                      className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/12 bg-white/[0.05] text-white/80 transition active:scale-90"
+                    >
+                      <X className="h-4.5 w-4.5" />
+                    </button>
+                  </div>
+
+                  <div className="tab-scroll min-h-0 flex-1 space-y-4 overflow-y-auto py-3">
+                    <section>
+                      <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.22em] text-white/45">
+                        Snake skin
+                      </p>
+                      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
+                        {SKINS.map((s) => {
+                          const active = s.id === skinId;
+                          return (
+                            <button
+                              key={s.id}
+                              type="button"
+                              onClick={() => pickSkin(s.id)}
+                              aria-pressed={active}
+                              className={cn(
+                                "flex flex-col items-center gap-1 rounded-xl border p-1.5 transition active:scale-95",
+                                active
+                                  ? "border-amber-400/70 bg-amber-400/10"
+                                  : "border-white/10 bg-white/[0.04] hover:border-white/25"
+                              )}
+                            >
+                              <SkinPreview skin={s} size={44} />
+                              <span
+                                className={cn(
+                                  "max-w-full truncate text-[9.5px] font-bold",
+                                  active ? "text-amber-200" : "text-white/55"
+                                )}
+                              >
+                                {s.name}
+                              </span>
+                              {active && <Check className="h-3 w-3 text-amber-300" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
+
+                    <section>
+                      <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.22em] text-white/45">
+                        Playground size
+                      </p>
+                      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                        {SIZES.map((z) => {
+                          const active = z.id === sizeId;
+                          return (
+                            <button
+                              key={z.id}
+                              type="button"
+                              onClick={() => pickSize(z.id)}
+                              aria-pressed={active}
+                              className={cn(
+                                "rounded-xl border px-2 py-2.5 text-center transition active:scale-95",
+                                active
+                                  ? "border-amber-400/70 bg-amber-400/10"
+                                  : "border-white/10 bg-white/[0.04] hover:border-white/25"
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  "block text-[12.5px] font-black",
+                                  active ? "text-amber-200" : "text-white/70"
+                                )}
+                              >
+                                {z.name}
+                              </span>
+                              <span className="mt-0.5 block text-[8.5px] font-bold uppercase tracking-[0.14em] text-white/40">
+                                {z.note}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {status !== "idle" && (
+                        <p className="mt-2 text-[10px] font-semibold text-amber-200/70">
+                          Size applies from the next run — skins change instantly.
+                        </p>
+                      )}
+                    </section>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={closeStyle}
+                    className="mt-3 inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-[#f5d97a] via-[#e3b84f] to-[#b8860b] text-xs font-black uppercase tracking-[0.16em] text-[#241a05] shadow-[0_8px_24px_-8px_rgba(212,175,55,0.7)] transition active:scale-95"
+                  >
+                    <Check className="h-4 w-4" />
+                    Done
+                  </button>
+                </motion.div>
+              )}
             </AnimatePresence>
+            </div>
           </div>
         </div>
 
@@ -1378,6 +1922,13 @@ export function SnakeView() {
           <span className="inline-flex items-center gap-1 text-amber-200/60">
             <Sparkles className="h-3 w-3" />
             Golden apple = 50 pts, expires fast
+          </span>
+          <span
+            className="inline-flex items-center gap-1 font-bold"
+            style={{ color: skin.body[0] }}
+          >
+            <Palette className="h-3 w-3" />
+            {skin.name} · {dims.cols}×{dims.rows}
           </span>
         </div>
       </div>
