@@ -433,14 +433,14 @@ export function useChessGame() {
         }
         engineFailRef.current = 0;
         // reveal the move with a brief arrow, then play it
-        setHint({ from: data.from, to: data.to });
+        setHint({ from: data.from as Square, to: data.to as Square });
         const wait = Math.max(180, 600 - (Date.now() - t0));
         await new Promise((r) => setTimeout(r, wait));
         if (reqId !== engineReqRef.current || status !== "active") return;
         setHint(null);
         applyMoveRef.current({
-          from: data.from,
-          to: data.to,
+          from: data.from as Square,
+          to: data.to as Square,
           promotion: (data.promotion as PromotionPiece) ?? "q",
         });
         setEngineInfo({
@@ -830,7 +830,7 @@ export function useChessGame() {
     try {
       const data = await bridgeBestMove(gameRef.current.fen(), "hard");
       if (!data) throw new Error();
-      setHint({ from: data.from, to: data.to });
+      setHint({ from: data.from as Square, to: data.to as Square });
       setSelected(null);
       setLegalForSelected([]);
       window.setTimeout(() => setHint((h) => (h?.from === data.from && h?.to === data.to ? null : h)), 2600);

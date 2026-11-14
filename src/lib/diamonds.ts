@@ -351,7 +351,7 @@ export function requestPurchase(input: {
 /* ---------------- platform ledger sync (retry queue) ---------------- */
 
 export interface WalletRecord {
-  kind: "order" | "withdrawal" | "balance";
+  kind: "order" | "withdrawal" | "balance" | "settlement";
   id?: string;
   payload?: unknown;
 }

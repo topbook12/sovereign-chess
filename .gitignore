@@ -63,3 +63,6 @@ db/*.db
 /step*.png
 /sel-*.png
 .zscripts/
+
+# local QA scratch
+/qa

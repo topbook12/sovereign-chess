@@ -66,10 +66,10 @@ export async function POST(req: NextRequest) {
       const stmts = games.map((g) => ({
         sql: `INSERT OR IGNORE INTO games (cid, device_id, pgn, result, label, plies, ts)
               VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        args: [g.cid, g.deviceId, g.pgn, g.result, g.label, g.plies, g.ts] as unknown[],
+        args: [g.cid, g.deviceId, g.pgn, g.result, g.label, g.plies, g.ts],
       }));
       const res = await c.batch(stmts, "write");
-      return res.reduce((sum, r) => sum + (r.rows_written ?? 0), 0);
+      return res.reduce((sum, r) => sum + (r.rowsAffected ?? 0), 0);
     });
 
     if (saved === null) {

@@ -58,8 +58,8 @@ export function PwaProvider() {
     window.addEventListener("appinstalled", onInstalled);
 
     /* ---------------- service worker registration ---------------- */
-    let cleanupTimer: ReturnType<typeof clearTimeout> | undefined;
-    let readyTimer: ReturnType<typeof clearTimeout> | undefined;
+    let cleanupTimer: ReturnType<typeof setTimeout> | undefined;
+    let readyTimer: ReturnType<typeof setTimeout> | undefined;
     if ("serviceWorker" in navigator) {
       // register shortly after load — never compete with first paint
       cleanupTimer = setTimeout(() => {

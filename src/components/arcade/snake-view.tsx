@@ -1531,26 +1531,28 @@ export function SnakeView() {
     <div className="tab-scroll flex min-h-0 flex-1 flex-col">
       <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-2.5 px-1 pb-24 lg:pb-4 xl:max-w-4xl">
         {/* HUD */}
-        <div className="flex items-stretch gap-2">
-          {statCard(
-            <Apple className="h-4 w-4 text-red-400" />,
-            "Score",
-            score,
-            "text-red-50"
-          )}
-          {statCard(
-            <Trophy className="h-4 w-4 text-amber-300" />,
-            "Best",
-            best,
-            "text-amber-200"
-          )}
-          {statCard(
-            <Zap className="h-4 w-4 text-emerald-400" />,
-            "Level",
-            level,
-            "text-emerald-200"
-          )}
-          <div className="ml-auto flex items-center gap-1.5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+          <div className="grid min-w-0 flex-1 grid-cols-3 gap-2">
+            {statCard(
+              <Apple className="h-4 w-4 text-red-400" />,
+              "Score",
+              score,
+              "text-red-50"
+            )}
+            {statCard(
+              <Trophy className="h-4 w-4 text-amber-300" />,
+              "Best",
+              best,
+              "text-amber-200"
+            )}
+            {statCard(
+              <Zap className="h-4 w-4 text-emerald-400" />,
+              "Level",
+              level,
+              "text-emerald-200"
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 sm:ml-auto">
             {iconBtn(
               openStyle,
               "Snake skin & playground size",

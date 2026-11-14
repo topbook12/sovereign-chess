@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
         stmts.map((st) => ({ sql: st.sql, args: st.args as never[] })),
         "write"
       );
-      return res.reduce((sum, r) => sum + (r.rows_written ?? 0), 0);
+      return res.reduce((sum, r) => sum + (r.rowsAffected ?? 0), 0);
     });
 
     if (saved === null) {

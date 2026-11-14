@@ -20,7 +20,8 @@ export interface QueuedGame {
   ts: number;
 }
 
-export type CloudGame = QueuedGame;
+/** Cloud mirror of a game — the API adds the stable `id` and `date` (ms). */
+export type CloudGame = QueuedGame & { id: string; date: number };
 
 export interface CloudStatus {
   /** games waiting in the retry queue */

@@ -156,7 +156,9 @@ function endRoom(room: Room, winner: Side | null, reason: string) {
     rewards:
       winner === null
         ? { w: 3, b: 3 }
-        : { [winner]: 4, [other(winner)]: 1 },
+        : winner === "w"
+          ? { w: 4, b: 1 }
+          : { w: 1, b: 4 },
   };
   for (const side of ["w", "b"] as Side[]) {
     const seat = room.seats[side];

@@ -63,6 +63,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "invalid payload" }, { status: 400 });
     }
 
+    // capture narrowed values — property narrowing never survives into closures
+    const deviceId: string = body.deviceId;
+    const payload: string = body.data;
+
     // independent writes — one failing store never blocks the other
     const tursoOk = await tursoQuery((c) =>
       c.execute({
@@ -70,16 +74,16 @@ export async function POST(req: NextRequest) {
               VALUES (?, ?, ?)
               ON CONFLICT(device_id)
               DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
-        args: [body.deviceId, body.data, Date.now()],
+        args: [deviceId, payload, Date.now()],
       }).then((r) => !!r)
     );
 
     let localOk: boolean;
     try {
       await db.careerProfile.upsert({
-        where: { deviceId: body.deviceId },
-        create: { deviceId: body.deviceId, data: body.data },
-        update: { data: body.data },
+        where: { deviceId },
+        create: { deviceId, data: payload },
+        update: { data: payload },
       });
       localOk = true;
     } catch (err) {

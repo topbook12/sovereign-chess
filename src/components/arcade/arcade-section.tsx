@@ -115,7 +115,8 @@ function SettlementCard({
   onDone: () => void;
 }) {
   const draw = settlement.winner === null;
-  const winName = draw ? null : players[settlement.winner].name;
+  const winName =
+    settlement.winner === null ? null : players[settlement.winner].name;
   return (
     <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/85 p-4 backdrop-blur-md">
       <div className="glass-panel w-full max-w-sm rounded-2xl p-6 text-center">

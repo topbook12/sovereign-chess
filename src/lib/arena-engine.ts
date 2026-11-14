@@ -587,7 +587,7 @@ export class ArenaEngine {
           this.food[i] = this.food[this.food.length - 1];
           this.food.pop();
           if (eater.isPlayer) {
-            this.opts.callbacks.onEat?.(f.value);
+            this.opts.callbacks?.onEat?.(f.value);
             if (f.value >= 3) {
               this.texts.push({
                 x: f.x,
@@ -638,7 +638,7 @@ export class ArenaEngine {
     // ---- the clock ----
     if (this.opts.durationSec > 0 && this.simTime >= this.opts.durationSec && !this.ended) {
       this.ended = true;
-      this.opts.callbacks.onTimeUp?.(this.scoreOf(this.player));
+      this.opts.callbacks?.onTimeUp?.(this.scoreOf(this.player));
     }
   }
 
@@ -746,10 +746,10 @@ export class ArenaEngine {
       this.deathT = 0;
       this.ended = true;
       const cause = killer ? `Squeezed by ${killer}!` : "The crimson wall!";
-      this.opts.callbacks.onDeath?.({ score: this.scoreOf(w), cause });
+      this.opts.callbacks?.onDeath?.({ score: this.scoreOf(w), cause });
     } else {
       w.respawnT = 2.8;
-      if (killer === this.player.name) this.opts.callbacks.onKill?.(w.name);
+      if (killer === this.player.name) this.opts.callbacks?.onKill?.(w.name);
     }
   }
 

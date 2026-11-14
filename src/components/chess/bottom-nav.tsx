@@ -73,7 +73,7 @@ export function BottomNav({
                   </span>
                   <span
                     className={cn(
-                      "relative text-[10.5px] font-bold uppercase tracking-[0.14em] transition-colors",
+                      "relative whitespace-nowrap text-[9.5px] font-bold uppercase tracking-[0.03em] transition-colors",
                       active ? "text-[#241a05]" : "text-foreground/50"
                     )}
                   >

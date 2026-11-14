@@ -218,6 +218,7 @@ const REASON_LABEL: Record<DiamondEntry["reason"], string> = {
   "duel-pot": "Duel pot won",
   "duel-win": "Duel won",
   "duel-play": "Duel played",
+  "duel-consolation": "Duel consolation",
   "duel-draw": "Duel stake refunded",
   purchase: "Shop purchase",
   withdraw: "Cash-out",
@@ -578,10 +579,8 @@ export function DuelView() {
       return false;
     }
     const promoRank = myColor === "w" ? "8" : "1";
-    const isPromotion =
-      !!chess?.get(from) &&
-      chess.get(from).type === "p" &&
-      to[1] === promoRank;
+    const moving = chess?.get(from);
+    const isPromotion = !!moving && moving.type === "p" && to[1] === promoRank;
     if (isPromotion && !pendingPromotion) {
       setPendingPromotion({ from, to });
       return true;
